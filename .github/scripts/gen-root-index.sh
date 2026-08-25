@@ -19,6 +19,15 @@
 # url, not this one — and a relative <a href> alone can only be read by hovering
 # the card, which leaves nothing to copy from a screenshot or a chat message.
 #
+# A "Links" list below the cards carries the rest of the urls a reader of this
+# page actually needs, absolute and as visible link text for the same reason:
+# this page's own canonical url, the repository, the workflows that publish each
+# section, the run list (a section is missing from the hub precisely when its
+# workflow has not published yet, so that is the page to check), and the Maven
+# Central snapshot directory the profiler resolves from — no workflow here builds
+# it. The mvnflight repository itself is deliberately NOT linked: it is private,
+# so the link would 404 for every visitor.
+#
 # Shared by all Pages workflows so the root index is IDENTICAL no matter
 # which deployment produced it. Every workflow publishes to the single GitHub
 # Pages site and rebuilds site/ from scratch on every deploy; without a shared
@@ -37,6 +46,8 @@ set -euo pipefail
 # repo link below is hard-coded the same way: this generator only ever publishes
 # this one site, and GITHUB_* carries no reliable Pages url to derive it from.
 SITE="https://mvnflight.github.io/mvn-perf-examples"
+REPO="https://github.com/mvnflight/mvn-perf-examples"
+SNAPSHOTS="https://central.sonatype.com/repository/maven-snapshots/io/github/mvnflight"
 
 {
   cat <<EOF
@@ -60,13 +71,19 @@ SITE="https://mvnflight.github.io/mvn-perf-examples"
     .sections .desc { color: #666; font-size: 0.9rem; margin-top: 0.2rem; }
     .sections .url { display: block; color: #57606a; font-size: 0.85rem; margin-top: 0.2rem;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    h2 { font-size: 1.1rem; margin: 2.5rem 0 0.5rem; }
+    .links { list-style: none; padding: 0; margin: 0; }
+    .links li { margin: 0.4rem 0; }
+    .links .lbl { color: #666; }
+    .links a { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem;
+      color: #0366d6; text-decoration: none; overflow-wrap: anywhere; }
+    .links a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <h1>Maven build-performance examples</h1>
   <p class="meta">Run #${GITHUB_RUN_NUMBER:-?} · commit ${GITHUB_SHA:-?} · ${GITHUB_REF_NAME:-?}</p>
-  <p class="repo">Project on GitHub: <a href="https://github.com/mvnflight/mvn-perf-examples">github.com/mvnflight/mvn-perf-examples</a></p>
-  <p><a href="https://github.com/mvnflight/mvn-perf-examples/tree/main/.github/workflows"><code>.github/workflows</code></a> results:</p>
+  <p><a href="$REPO/tree/main/.github/workflows"><code>.github/workflows</code></a> results:</p>
   <ul class="sections">
 EOF
   # Each section link is emitted only when its index page exists, so a partial
@@ -87,6 +104,14 @@ EOF
     echo "      <span class=\"url\">$SITE/reference/</span></li>"
   fi
   cat <<EOF
+  </ul>
+  <h2>Links</h2>
+  <ul class="links">
+    <li><span class="lbl">This page</span> — <a href="$SITE/">$SITE/</a></li>
+    <li><span class="lbl">Repository</span> — <a href="$REPO">$REPO</a></li>
+    <li><span class="lbl">Workflows that publish these sections</span> — <a href="$REPO/tree/main/.github/workflows">$REPO/tree/main/.github/workflows</a></li>
+    <li><span class="lbl">Workflow runs</span> — <a href="$REPO/actions">$REPO/actions</a></li>
+    <li><span class="lbl">The mvnflight profiler, on Maven Central snapshots</span> — <a href="$SNAPSHOTS/">$SNAPSHOTS/</a></li>
   </ul>
 </body>
 </html>
