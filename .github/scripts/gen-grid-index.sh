@@ -48,6 +48,29 @@
 # (blank is fine when run outside Actions).
 set -euo pipefail
 
+# Refuse to render a grid from a directory holding no reports.
+#
+# Every caller runs this from the directory that holds its section's
+# report-*.html. With none of them present the generator still succeeds and emits
+# a complete, plausible-looking page — every table row an em-dash, every chart
+# empty — which then DEPLOYS over the live site and reads as "the grid published,
+# the build must be broken". That is exactly what shipped: both grid workflows
+# were dispatched with index_only=true before a single report had ever been
+# published, so the live site had nothing to seed from, and two green runs
+# published a 43-row table of "—".
+#
+# Failing here instead stops the deploy job before the Pages upload, so the last
+# good site keeps serving. publish-reference-reports.yml already makes this exact
+# check against its source directory; doing it in the generator covers the other
+# two callers — and both workflows' index_only paths, where there is no matrix
+# failure to notice — from one place.
+if ! ls report-*.html >/dev/null 2>&1; then
+  echo "::error::gen-grid-index.sh: no report-*.html in $(pwd) — refusing to generate a grid page with no reports." >&2
+  echo "If this is an index_only run, the live site had no reports to seed from: re-dispatch" >&2
+  echo "with index_only UNCHECKED so the report matrix actually builds them." >&2
+  exit 1
+fi
+
 # Extract the embedded mvnflight model JSON from a report HTML file.
 # The data script tag is a single line; the renderer neutralises any inner
 # "</script" to "<\/script", so the first literal "</script>" is the real close.
