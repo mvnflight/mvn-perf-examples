@@ -222,6 +222,24 @@ first deploy — when there is no live site yet — publishes just its own secti
 mvnd leg of the scaling grid installs the daemon through the local
 [`setup-mvnd`](.github/actions/setup-mvnd) composite action.
 
+### A fourth workflow, which publishes nothing
+
+**`mvnflight overhead benchmark`** (`.github/workflows/bench-script.yml`) is the
+odd one out: it does not touch the Pages site. It points
+[`scripts/bench-maven-builders.sh`](./scripts/README.md) at a **third-party**
+reactor ([`google/gson`](https://github.com/google/gson)) and builds every
+configuration **twice** — once with the mvnflight extension absent from that
+project's `.mvn/extensions.xml` and once with it added — so the gap between the two
+curves is the profiler's own **build overhead**. Everywhere else in this repo
+mvnflight is the instrument; here it is the thing being measured.
+
+The result is the **`bench-report`** artifact on the run (CSV + a self-contained
+HTML chart + one saved dashboard per instrumented build), downloadable from the
+run's *Summary ▸ Artifacts*. It triggers on pushes and PRs that touch `scripts/**`
+or the workflow itself, and on `workflow_dispatch`. The same script benchmarks any
+Maven project you point it at, locally or in CI — see
+[`scripts/README.md`](./scripts/README.md).
+
 ## License
 
 Apache License 2.0 — see [`LICENSE`](./LICENSE).
