@@ -193,8 +193,9 @@ parse_total_time() {
 }
 
 # ============================================================================
-# Chart helper — a trimmed, seconds-native copy of emit_chart_svg from
-# .github/scripts/gen-devoxx-index.sh: dual Y axis (wall clock left, % of
+# Chart helper — a trimmed, seconds-native copy of emit_chart_svg from this
+# repo's grid-index generator (.github/scripts/gen-grid-index.sh): the two now
+# live side by side, so keep an eye on them drifting apart. Dual Y axis (wall clock left, % of
 # baseline right), x starts at 0, dashed series are conditional.
 #
 # Each builder (Default=blue, Smart=orange) gets a SOLID and a DASHED curve. The
