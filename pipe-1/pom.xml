@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.github.mvnflight.examples</groupId>
+        <artifactId>mvn-perf-examples</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>pipe-1</artifactId>
+
+    <!-- First link of the critical-path chain core -> pipe-1 -> pipe-2 -> pipe-3
+         -> pipe-4. Each link is a fixed 8 s; the four serial links (32 s) are the
+         reactor's long pole, which is what the smart builder schedules first. -->
+    <properties>
+        <demo.sleep.minMs>8000</demo.sleep.minMs>
+        <demo.sleep.maxMs>8000</demo.sleep.maxMs>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.mvnflight.examples</groupId>
+            <artifactId>core</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

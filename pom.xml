@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.github.mvnflight.examples</groupId>
+    <artifactId>mvn-perf-examples</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Maven build-performance examples</name>
+    <description>
+        A 10-module reactor whose tests only sleep for fixed per-module durations.
+        core fans out to four short "filler" libs (18 s each) and to a four-deep
+        "pipe" chain (8 s each = the 32 s critical path); app joins them all.
+        Profiled by mvnflight to illustrate -T parallel scaling and how the Takari
+        smart builder schedules the critical-path chain ahead of the cheap fillers.
+    </description>
+
+    <!-- Reactor shape (see README.md):
+             core ─┬─ lib-01 lib-02 lib-03 lib-04        4 short fillers (18 s)
+                   └─ pipe-1 → pipe-2 → pipe-3 → pipe-4  4-deep chain (8 s each)
+                                          └────────────→ app  (joins everything)
+
+         The chain is the critical path (4 x 8 s = 32 s of strictly serial work).
+         IMPORTANT: the fillers are declared BEFORE the pipe modules below. Maven's
+         default builder schedules ready modules in reactor (declaration) order, so
+         it greedily starts the cheap fillers and only reaches pipe-1 once a thread
+         frees — delaying the long chain. The smart builder instead weights each
+         module by its downstream chain length, so pipe-1 (weight 5) outranks every
+         filler (weight 2) and starts first. That is the whole point of this
+         reactor. -->
+    <modules>
+        <module>core</module>
+        <module>lib-01</module>
+        <module>lib-02</module>
+        <module>lib-03</module>
+        <module>lib-04</module>
+        <module>pipe-1</module>
+        <module>pipe-2</module>
+        <module>pipe-3</module>
+        <module>pipe-4</module>
+        <module>app</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <junit.jupiter.version>5.11.4</junit.jupiter.version>
+
+        <!-- Sleep knobs. Each module overrides demo.sleep.minMs/maxMs in its own
+             pom to a FIXED value (min == max), so every test sleeps a deterministic
+             amount and the default-vs-smart reports are directly comparable. seed
+             and random are only consulted when min < max (kept for completeness).
+             Command-line -D overrides these, and the surefire config below forwards
+             them into the forked test JVM (Maven does NOT propagate -D to surefire
+             forks automatically). -->
+        <demo.sleep.minMs>2000</demo.sleep.minMs>
+        <demo.sleep.maxMs>2000</demo.sleep.maxMs>
+        <demo.sleep.seed>42</demo.sleep.seed>
+        <demo.sleep.random>false</demo.sleep.random>
+        <!-- Global time scale applied to every module's fixed duration. Leave at
+             1.0 for the real timings; pass e.g. -Ddemo.weight=0.2 for a fast local
+             loop (every sleep shrinks to 20 %, keeping the reactor's shape). -->
+        <demo.weight>1.0</demo.weight>
+
+        <!-- Surefire fork JVM count, default 1 (serial test classes per module).
+             Only the parallel-tests module (built under -Pparallel) has more than
+             one test class, so this is a no-op everywhere else; pass
+             -Ddemo.forkCount=5 to run each of its five 15 s test classes in its own
+             fork JVM, so they all execute in one parallel wave (the legs of
+             .github/workflows/fork-grid.yml, published under /parallel/). Each fork
+             is independently instrumented by mvnflight, so the report shows one
+             fork lane per JVM. -->
+        <demo.forkCount>1</demo.forkCount>
+
+        <!-- Extra fork JVM flags, empty by default. CI may set this (e.g.
+             -XX:TieredStopAtLevel=1); mvnflight appends its -javaagent to it. -->
+        <test.argLine></test.argLine>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.jupiter.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.2.5</version>
+                    <configuration>
+                        <useModulePath>false</useModulePath>
+                        <argLine>${test.argLine}</argLine>
+                        <!-- Intra-module test parallelism: with forkCount &gt; 1 Surefire
+                             distributes a module's test classes across this many fork JVMs
+                             (reuseForks keeps each fork alive for several classes). Default
+                             1 = the original serial behavior; only the parallel-tests module
+                             (built under -Pparallel) has enough test classes for this to
+                             matter. -->
+                        <forkCount>${demo.forkCount}</forkCount>
+                        <reuseForks>true</reuseForks>
+                        <!-- Forward the sleep knobs into the forked test JVM. -->
+                        <systemPropertyVariables>
+                            <demo.sleep.minMs>${demo.sleep.minMs}</demo.sleep.minMs>
+                            <demo.sleep.maxMs>${demo.sleep.maxMs}</demo.sleep.maxMs>
+                            <demo.sleep.seed>${demo.sleep.seed}</demo.sleep.seed>
+                            <demo.sleep.random>${demo.sleep.random}</demo.sleep.random>
+                            <demo.weight>${demo.weight}</demo.weight>
+                        </systemPropertyVariables>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <!-- The parallel-tests module is added to the reactor ONLY when this profile is
+         active (-Pparallel). Maven merges a profile's <modules> with the base ones,
+         so the baseline reactor (the builder x -T scaling grid, scaling-grid.yml,
+         published under /scaling/) builds the 10 modules above and never sees
+         parallel-tests, while the forkCount grid (fork-grid.yml, published under
+         /parallel/) passes -Pparallel to add the 11th module and -Ddemo.forkCount=5
+         to fan its five test classes across parallel fork JVMs. -->
+    <profiles>
+        <profile>
+            <id>parallel</id>
+            <modules>
+                <module>parallel-tests</module>
+            </modules>
+        </profile>
+    </profiles>
+</project>

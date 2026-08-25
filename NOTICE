@@ -1,0 +1,53 @@
+mvn-perf-examples — Maven build-performance examples
+Copyright 2026 Jean Bisutti
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file in this
+repository, or http://www.apache.org/licenses/LICENSE-2.0, for the full terms.
+
+This project is a synthetic multi-module Maven reactor whose tests do nothing but
+sleep for fixed, deterministic durations. It exists to measure and illustrate
+Maven build performance — reactor parallelism (-T), the Takari smart builder's
+critical-path scheduling, and Surefire's intra-module fork parallelism — using
+build profiles produced by the mvnflight JFR build profiler.
+
+Third-party code REDISTRIBUTED in this repository
+-------------------------------------------------
+
+  - Apache Maven Wrapper 3.3.4 — the files mvnw, mvnw.cmd and
+    .mvn/wrapper/maven-wrapper.properties, copied verbatim from the Apache Maven
+    project (they carry the Apache Software Foundation header).
+    https://maven.apache.org/wrapper/
+    Apache License 2.0
+    This is the `only-script` wrapper: no jar is committed; it downloads Apache
+    Maven 3.9.9 (Apache License 2.0) on first use.
+
+  - setup-mvnd composite GitHub action — .github/actions/setup-mvnd/action.yml,
+    vendored from QuickPerf (see the provenance comment at the top of the file).
+    https://github.com/quick-perf/quickperf
+    Apache License 2.0
+
+The mvndw and mvndw.cmd wrappers are original to this repository. They are not
+copies of any upstream script; they download a pinned Apache Maven Daemon (mvnd
+1.0.6, Apache License 2.0, https://github.com/apache/maven-mvnd) from
+downloads.apache.org on first use. mvnd itself is not redistributed here.
+
+Third-party artifacts RESOLVED at build time (not redistributed)
+----------------------------------------------------------------
+
+  - JUnit 5 (JUnit Jupiter)
+    https://junit.org/junit5/
+    Eclipse Public License 2.0
+
+  - Apache Maven Surefire Plugin
+    https://maven.apache.org/surefire/
+    Apache License 2.0
+
+  - Takari Smart Builder
+    https://github.com/takari/takari-smart-builder
+    Apache License 2.0
+
+  - mvnflight — Maven JFR Build Profiler, resolved as the Maven coordinates
+    io.github.mvnflight:mvnflight-extension:0.1.0-SNAPSHOT from the Maven Central
+    snapshot repository
+    https://central.sonatype.com/repository/maven-snapshots/io/github/mvnflight/mvnflight-extension/
+    Apache License 2.0

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Committed settings file whose ONLY job is to make the Maven Central snapshot
+  repository visible, so that `io.github.mvnflight:mvnflight-extension:0.1.0-SNAPSHOT`
+  (declared in .mvn/extensions.xml) can be downloaded.
+
+  Why a settings file and not <repositories> in pom.xml: core extensions are
+  resolved by Maven's bootstrap, BEFORE the project POM is parsed. At that point
+  the only repositories Maven knows about are the built-in `central` — which has
+  snapshots disabled — and whatever the active settings declare. A <repositories>
+  block in pom.xml is therefore read too late and has no effect on the extension.
+
+  .mvn/maven.config passes `-s .mvn/settings.xml`, so this file is picked up
+  automatically by `./mvnw ...` from the repo root.
+
+  Escape hatch: `-s` REPLACES ~/.m2/settings.xml rather than merging with it, so
+  if you are behind a corporate mirror or proxy, delete .mvn/maven.config and add
+  the central-snapshots repository below to your own ~/.m2/settings.xml instead.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+    <profiles>
+        <profile>
+            <id>central-snapshots</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <!-- Both a repository AND a pluginRepository: the bootstrap resolves
+                 core extensions through the plugin repositories as well. -->
+            <repositories>
+                <repository>
+                    <id>central-snapshots</id>
+                    <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+                    <releases>
+                        <enabled>false</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </repository>
+            </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>central-snapshots</id>
+                    <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+                    <releases>
+                        <enabled>false</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+    </profiles>
+
+    <!-- Belt and braces on top of <activeByDefault> above: an activeByDefault
+         profile switches off as soon as a profile is named on the command line,
+         and this repo does exactly that (`-Pparallel` adds the parallel-tests
+         module). Listed here the profile stays on regardless. -->
+    <activeProfiles>
+        <activeProfile>central-snapshots</activeProfile>
+    </activeProfiles>
+</settings>

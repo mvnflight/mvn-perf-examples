@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# ----------------------------------------------------------------------------
+# Maven Daemon (mvnd) wrapper for this example reactor.
+#
+# Downloads a pinned mvnd distribution into ./.mvnd/ on first use (SHA-512
+# verified), then execs it with every argument passed through. The pinned
+# version matches the CI workflow so local and CI mvnd runs are comparable.
+#
+#   ./mvndw clean verify
+#   ./mvndw -T4 clean verify
+# ----------------------------------------------------------------------------
+set -euo pipefail
+
+MVND_VERSION="1.0.6"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CACHE_DIR="${SCRIPT_DIR}/.mvnd"
+
+case "$(uname -s)" in
+  Linux*)  os=linux ;;
+  Darwin*) os=darwin ;;
+  *)       os=windows ;;
+esac
+case "$(uname -m)" in
+  arm64|aarch64) arch=aarch64 ;;
+  *)             arch=amd64 ;;
+esac
+
+archive="maven-mvnd-${MVND_VERSION}-${os}-${arch}"
+bin="${CACHE_DIR}/${archive}/bin/mvnd"
+
+if [ ! -x "${bin}" ]; then
+  mkdir -p "${CACHE_DIR}"
+  url="https://downloads.apache.org/maven/mvnd/${MVND_VERSION}/${archive}.zip"
+  zip="${CACHE_DIR}/${archive}.zip"
+  echo "[mvndw] downloading ${url}" >&2
+  curl -fsSL -o "${zip}" "${url}"
+  curl -fsSL -o "${zip}.sha512" "${url}.sha512"
+  expected="$(awk '{print $1}' "${zip}.sha512")"
+  if command -v sha512sum >/dev/null 2>&1; then
+    echo "${expected}  ${zip}" | sha512sum -c -
+  else
+    echo "${expected}  ${zip}" | shasum -a 512 -c -
+  fi
+  unzip -q -o "${zip}" -d "${CACHE_DIR}"
+fi
+
+exec "${bin}" "$@"

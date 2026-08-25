@@ -1,0 +1,352 @@
+name: Test-fork parallelism grid
+
+# INTRA-module test parallelism (Surefire forkCount). It builds the SAME reactor as
+# scaling-grid.yml but with the `parallel` Maven profile active (-Pparallel), which
+# adds an 11th module — parallel-tests — whose five independent 15 s test classes are
+# the whole point of this page. The scaling grid (scaling-grid.yml -> scaling/) never
+# activates that profile, so its reactor stays at 10 single-test modules; this
+# workflow is the only one that builds parallel-tests.
+#
+# The whole default + smart × -T1..-T10 × C2 on/off grid is run at THREE Surefire
+# fork counts (-Ddemo.forkCount, the `fork` matrix axis): 5, 1 and 0 — so the page
+# contrasts parallel forks against no forking at all.
+#   forkCount=5  parallel-tests' five test classes each run in their own fork JVM
+#                (one parallel wave): the module's test phase collapses from ~75 s
+#                serial to ~15 s, and mvnflight renders one fork lane per JVM.
+#   forkCount=1  the five classes run serially in a single fork JVM (~75 s) — the
+#                "1 fork" curve.
+#   forkCount=0  Surefire runs the tests INSIDE the Maven build JVM (no fork at all):
+#                the agent argLine is ignored and the test time folds into the parent
+#                recording — the "no fork" point. ONLY measured at -T1: Surefire forbids
+#                forkCount=0 under a parallel reactor (-T>1 hard-fails with "parallel
+#                maven execution is not compatible with surefire forkCount 0"), so this
+#                level is a single -T1 marker (the matrix excludes fork=0 × -T2..10), the
+#                "no new JVM" point next to forkCount=1's one new JVM and forkCount=5's five.
+# There is no mvnd leg and no no-cache leg here (this page is about forkCount, not the
+# daemon or first-time downloads). Reports carry an explicit fork suffix
+# (report-<builder>-T<n>-f<fork>[-noC2].html); the shared index generator reads all
+# three fork levels and draws 12 curves per chart (FORK_LEVELS, see the deploy job).
+#
+# The mvnflight extension is not built here: .mvn/extensions.xml pins the floating
+# 0.1.0-SNAPSHOT, resolved from the Maven Central snapshot repository that
+# .mvn/settings.xml adds. Maven reads extensions.xml during BOOTSTRAP, before any
+# POM — a <repositories> block in pom.xml is never consulted for it, so only a
+# settings file can supply that repository. Every Maven invocation below therefore
+# passes -s "$GITHUB_WORKSPACE/.mvn/settings.xml" explicitly rather than relying on
+# .mvn/maven.config, whose -s path is relative to the working directory. The
+# third-party closure is warmed into setup-java's `cache: maven` by the `warm` job
+# below, under the SAME cache key scaling-grid.yml uses, so the two grid workflows
+# share one warmed cache.
+#
+# Publishing: GitHub Pages serves one site per repo, so this workflow seeds site/
+# from the CURRENTLY-LIVE Pages site (preserving the scaling/ grid and the committed
+# reference/ grid), then rebuilds ONLY parallel/ on top — it never touches the other
+# sections, so publishing this page does not clobber them (and the scaling workflow
+# reciprocally preserves parallel/ via the same live-site seed). On the very first
+# deploy there is no live site yet: the seed is best effort, seeds nothing, and only
+# this page's section deploys. See .github/scripts/seed-from-live-site.sh.
+#
+# One-time repo setup: Settings -> Pages -> Build and deployment -> Source = "GitHub Actions".
+#
+# The index_only dispatch input skips the report matrix and re-publishes the site
+# with parallel/index.html regenerated from the reports already live.
+
+on:
+  # Manual only.
+  workflow_dispatch:
+    inputs:
+      index_only:
+        description: >-
+          Skip the report builds and re-publish the site with the
+          parallel/ grid index regenerated from the reports already on the
+          live site (minutes instead of hours; use after an index-generator fix).
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # Resolve the reactor's FULL dependency closure once — the mvnflight extension
+  # snapshot included — into setup-java's `cache: maven` entry, so every timed leg
+  # below restores a warm local repository. Without it the first-time download cost
+  # would land entirely on whichever leg happens to run first on a cold cache and
+  # make that one leg incomparable with the other 83.
+  warm:
+    name: Warm dependency cache
+    # Skipped on index_only runs; the report matrix then auto-skips too (its
+    # `needs: warm` is unmet) and deploy still runs via its `if: always()`.
+    if: ${{ !inputs.index_only }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          # MUST match scaling-grid.yml's key exactly (same files hashed): the two
+          # grid workflows then share one warmed third-party cache. parallel-tests
+          # adds no new third-party dependency (just core + junit-jupiter, already in
+          # the closure), so a hit here downloads nothing.
+          cache-dependency-path: |
+            **/pom.xml
+            .mvn/extensions.xml
+
+      # -Pparallel so the parallel-tests module (and its compile/test plugins) are
+      # resolved too; -Ddemo.weight=0 zeroes every test sleep so the warm-up is quick.
+      # setup-java's post-step then saves the enriched ~/.m2 into the cache entry every
+      # report leg restores. (On a cache hit this re-runs but downloads nothing.)
+      - name: Warm dependency cache
+        run: mvn -B -ntp -U -T4 -Pparallel -Ddemo.weight=0 -s "$GITHUB_WORKSPACE/.mvn/settings.xml" clean verify
+
+  report:
+    name: ${{ matrix.builder }} · T${{ matrix.threads }} · C2-${{ matrix.c2 }} · forks=${{ matrix.fork }}
+    needs: warm
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Run the report legs one at a time so the profiled builds don't compete for
+      # the runner and stay comparable.
+      max-parallel: 1
+      matrix:
+        # The grid: each scheduler at every thread width from 1 to the module count,
+        # each run with C2 on and off — at three Surefire fork counts (5 parallel
+        # forks, 1 serial fork, 0 = no fork, run in the Maven JVM; the `fork` value
+        # is passed as -Ddemo.forkCount in the Run step). No mvnd leg and no no-cache
+        # leg on this page. forkCount=0 only runs at -T1 (see the exclude below), so
+        # the grid is 2 × 10 × 2 × 2 (forks 5/1) + 2 × 1 × 2 (fork 0 at -T1) = 84 legs.
+        builder: [default, smart]
+        threads: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        c2: ['on', 'off']
+        fork: [5, 1, 0]
+        # forkCount=0 runs the tests INSIDE the Maven build JVM. Surefire forbids that
+        # under a parallel reactor: at -T>1 it hard-fails with "parallel maven execution
+        # is not compatible with surefire forkCount 0" (AbstractSurefireMojo: isNotForking
+        # && isMavenParallel), and there is no flag to bypass it. So forkCount=0 is only
+        # valid at -T1 (single-threaded reactor) — and that is exactly where it is
+        # interesting: the "no new JVM for tests" point sitting next to forkCount=1 (one
+        # new JVM) and forkCount=5 (five). Drop the impossible fork=0 × -T2..10 legs.
+        exclude:
+          - { fork: 0, threads: 2 }
+          - { fork: 0, threads: 3 }
+          - { fork: 0, threads: 4 }
+          - { fork: 0, threads: 5 }
+          - { fork: 0, threads: 6 }
+          - { fork: 0, threads: 7 }
+          - { fork: 0, threads: 8 }
+          - { fork: 0, threads: 9 }
+          - { fork: 0, threads: 10 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          # MUST match the warm job's key exactly so this leg restores the enriched
+          # cache the warm job saved → an exact hit means it downloads nothing.
+          cache-dependency-path: |
+            **/pom.xml
+            .mvn/extensions.xml
+
+      # UNTIMED warm-up: resolve the whole closure — the mvnflight extension from
+      # Central snapshots (-U so the grid profiles the latest published one), the
+      # Takari smart builder, and every plugin the lifecycle touches — into ~/.m2
+      # before the stopwatch starts. The warm job above fills the shared cache, but a
+      # restored cache older than the floating snapshot's `daily` update policy (or a
+      # key miss after any pom / extensions.xml edit) would otherwise push the
+      # extension's metadata + jar download — on a full miss the whole closure — into
+      # the measured wall clock of whichever leg ran first. -Pparallel so the
+      # parallel-tests module resolves too, -Ddemo.weight=0 zeroes every test sleep so
+      # this costs seconds, and the artifacts it caches are identical whatever the
+      # leg's builder, thread count or fork count. Nothing here is measured.
+      - name: Warm the local repository (untimed)
+        run: |
+          mvn -B -ntp -U -T4 -Pparallel -Ddemo.weight=0 \
+            -s "$GITHUB_WORKSPACE/.mvn/settings.xml" \
+            clean verify
+
+      # Resolve the report file name for this scenario. Unlike the scaling grid, these
+      # carry an explicit -f<fork> suffix (the whole page spans forks 5/1/0), placed
+      # before the optional -noC2 suffix: report-<builder>-T<n>-f<fork>[-noC2].html.
+      - name: Resolve scenario
+        id: s
+        run: |
+          suffix="-f${{ matrix.fork }}"
+          [ "${{ matrix.c2 }}" = "off" ] && suffix="${suffix}-noC2"
+          case "${{ matrix.builder }}" in
+            default) echo "out=report-default-T${{ matrix.threads }}${suffix}.html" ;;
+            smart)   echo "out=report-smart-T${{ matrix.threads }}${suffix}.html" ;;
+          esac >> "$GITHUB_OUTPUT"
+
+      # Run the profiled build. -Pparallel adds the parallel-tests module and
+      # -Ddemo.forkCount=<fork> sets the Surefire fork count for this leg: 5 fans the
+      # five test classes across five fork JVMs, 1 runs them serially in one fork, and
+      # 0 runs them inside the Maven build JVM (no fork).
+      - name: Run profiled build
+        run: |
+          set -euo pipefail
+          # For the "C2-off" legs, disable the C2 JIT tier (keep only C1) on both
+          # the build JVM (MAVEN_OPTS) and the forked test JVMs (-Dtest.argLine, which
+          # the pom prepends ahead of mvnflight's -javaagent). At forkCount=0 there is
+          # no fork JVM, so -Dtest.argLine is ignored and MAVEN_OPTS alone disables C2
+          # for the tests (they run in the build JVM).
+          fork_args=()
+          if [ "${{ matrix.c2 }}" = "off" ]; then
+            export MAVEN_OPTS="${MAVEN_OPTS:-} -XX:TieredStopAtLevel=1"
+            fork_args=("-Dtest.argLine=-XX:TieredStopAtLevel=1")
+          fi
+          # Absolute -s: the committed settings file is what makes the Central snapshot
+          # repository visible to the extension bootstrap (see the header comment).
+          settings="$GITHUB_WORKSPACE/.mvn/settings.xml"
+          case "${{ matrix.builder }}" in
+            default) mvn -B -ntp -T${{ matrix.threads }}          -Pparallel -Ddemo.forkCount=${{ matrix.fork }} -s "$settings" "${fork_args[@]}" clean verify ;;
+            smart)   mvn -B -ntp -T${{ matrix.threads }} -b smart -Pparallel -Ddemo.forkCount=${{ matrix.fork }} -s "$settings" "${fork_args[@]}" clean verify ;;
+          esac
+
+      - name: Collect report
+        if: always()
+        run: |
+          mkdir -p dist
+          src="target/mvnflight/report.html"
+          out="${{ steps.s.outputs.out }}"
+          if [ -f "$src" ]; then
+            cp "$src" "dist/$out"
+          else
+            echo "No report produced for ${{ matrix.builder }} / T${{ matrix.threads }}" >&2
+            exit 1
+          fi
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.s.outputs.out }}
+          path: dist/${{ steps.s.outputs.out }}
+          retention-days: 7
+          if-no-files-found: error
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: report
+    # Publish whatever reports succeeded, even if some matrix legs failed.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Needed for the index generators below — the deploy job runs them from
+      # $GITHUB_WORKSPACE, so the repo must be checked out here.
+      - uses: actions/checkout@v4
+
+      # Seed site/ from the currently-live Pages site so this deploy preserves the
+      # sections it does NOT own (the scaling/ grid, the committed reference/ grid).
+      # Best effort: on the first-ever deploy there is no live site to mirror, the
+      # script says so and exits 0, and only the parallel grid deploys.
+      - name: Seed site/ from the live Pages site (best effort)
+        run: bash .github/scripts/seed-from-live-site.sh site
+
+      # This workflow OWNS ONLY parallel/: rebuild it fresh from this run's reports,
+      # leaving everything else (seeded above) untouched. Drop any seeded parallel
+      # reports first so a leg that failed this run is not left showing a stale
+      # report. On index_only runs there are no fresh reports: keep the seeded
+      # (currently-live) ones and just regenerate the index from them.
+      - name: Reset parallel/ grid
+        run: |
+          rm -f site/parallel/index.html
+          if [ "${{ inputs.index_only }}" != "true" ]; then
+            rm -f site/parallel/report-*.html
+          fi
+
+      - name: Download this run's parallel reports
+        if: ${{ !inputs.index_only }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: report-*
+          merge-multiple: true
+          path: site/parallel
+
+      # Generate the parallel page with the shared generator: FORK_LEVELS turns on the
+      # 12-curve fork-comparison charts/table (reads the -f<fork> reports), with a
+      # forkCount-specific title/heading/intro and no no-cache / mvnd rows (neither leg
+      # runs). BACK_HREF is the site root — this page sits one level below it, at
+      # parallel/ — and the intro's cross-link to the sibling grid is ../scaling/.
+      - name: Generate parallel/index.html
+        env:
+          FORK_LEVELS: '5 1 0'
+          PAGE_TITLE: 'Maven build-performance examples · test-fork parallelism'
+          PAGE_HEADING: 'Tests in parallel forks (forkCount 5 / 1 / 0)'
+          BACK_HREF: '../index.html'
+          PAGE_INTRO: >-
+            11-module reactor (the 10-module example reactor plus a dedicated
+            <code>parallel-tests</code> module built only under <code>-Pparallel</code>),
+            run across the default &amp; Takari smart builders × <code>-T1..-T10</code>
+            × C2 on/off, at <strong>three Surefire fork counts</strong> so the charts
+            contrast parallel forks against no forking — the <code>forkCount</code> 5 / 1
+            curves span <code>-T1..-T10</code> (Default &amp; Smart × C2 on/off; cool
+            colours = Default, warm = Smart), and <code>forkCount=0</code> adds a single
+            <code>-T1</code> point per builder/C2 (see below).<br>
+            <strong><code>forkCount=5</code></strong> runs <code>parallel-tests</code>'
+            five independent 15 s test classes each in their own fork JVM — one parallel
+            wave, so the module's test phase collapses from ~75 s serial to ~15 s and
+            mvnflight shows one fork lane per JVM. <strong><code>forkCount=1</code></strong>
+            runs the five classes serially in a single fork (~75 s). <strong><code>forkCount=0</code></strong>
+            ("no fork") runs them <em>inside the Maven build JVM</em> — no fork lane, the
+            test time folds into the parent recording. Surefire forbids
+            <code>forkCount=0</code> under a parallel reactor, so it appears <em>only at
+            <code>-T1</code></em> as a single "no new JVM for tests" marker beside
+            <code>forkCount=1</code> (one new JVM) and <code>forkCount=5</code> (five).<br>
+            This is <strong>intra-module</strong> test parallelism (Surefire
+            <code>forkCount</code>), a different axis from the <code>-T</code> reactor
+            parallelism on the <a href="../scaling/index.html">builder scaling grid</a>:
+            <code>-T</code> parallelises across modules, <code>forkCount</code> within one.<br>
+            Wall-clock percentages are relative to the <strong>Default builder · -T1 ·
+            forkCount=5</strong> baseline, so lower is faster. Solid = C2 JIT enabled,
+            dashed = the same run with the JVM's <strong>C2 JIT tier disabled</strong>
+            (<code>-XX:TieredStopAtLevel=1</code>).
+          SHOW_NOCACHE_ROW: '0'
+          SHOW_MVND: '0'
+        run: |
+          mkdir -p site/parallel
+          cd site/parallel
+          bash "$GITHUB_WORKSPACE/.github/scripts/gen-grid-index.sh"
+
+      # Use the SAME root-index generator as the other workflows so the root landing
+      # page is identical regardless of which workflow deploys; each section's link is
+      # emitted only when its index exists (see gen-root-index.sh).
+      - name: Generate root index.html
+        run: ( cd site && bash "$GITHUB_WORKSPACE/.github/scripts/gen-root-index.sh" )
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # The blob upload to Azure occasionally fails on a transient network blip;
+      # retry once (a failed upload never finalizes the artifact).
+      - name: Upload Pages artifact
+        id: upload
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Upload Pages artifact (retry)
+        if: ${{ steps.upload.outcome == 'failure' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

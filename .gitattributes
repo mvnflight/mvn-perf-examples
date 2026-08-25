@@ -1,0 +1,7 @@
+# Normalise text to LF in the repo. Critical for the bash scripts and the Maven
+# wrappers: a CRLF shebang breaks `#!/usr/bin/env sh` on the Linux CI runner.
+* text=auto eol=lf
+*.sh text eol=lf
+mvnw text eol=lf
+mvndw text eol=lf
+*.cmd text eol=crlf

@@ -1,0 +1,356 @@
+name: Builder scaling grid
+
+# Builds the example project at the repo root (a 10-module reactor — 4 filler
+# libs + a 4-deep pipe chain — whose tests only sleep) across many scenarios and
+# publishes one mvnflight report.html per scenario to GitHub Pages under the
+# scaling/ subpath:
+#
+#   - a no-cache leg FIRST: default builder at -T1 against an empty local repo
+#     (seeded with only the mvnflight artifacts), so every plugin and project
+#     dependency is downloaded during the profiled build — the "Maven downloads"
+#     baseline. Every other leg uses the warm local dependency cache.
+#   - default multithreaded builder at -T1 .. -T10  (1 thread .. one per module)
+#   - Takari smart builder (-b smart) at -T1 .. -T10
+#   - the Maven Daemon (mvnd) as a reference point
+#
+# (Intra-module test parallelism — Surefire forkCount — is a separate grid with
+# its own workflow and page: see .github/workflows/fork-grid.yml -> parallel/.)
+#
+# Each of those scenarios is run twice: once normally, and once with the JVM's
+# C2 JIT tier disabled (-XX:TieredStopAtLevel=1, keeping only C1) applied to both
+# the build JVM and the forked test JVMs, so the report's "JIT C2 compilation"
+# metric can be compared with and without C2.
+#
+# Where the profiler comes from
+# -----------------------------
+# .mvn/extensions.xml pins io.github.mvnflight:mvnflight-extension:0.1.0-SNAPSHOT,
+# which is published to the Maven Central snapshot repository. Build extensions
+# are resolved by Maven's bootstrap, BEFORE the project POM is read, so a
+# <repositories> block in pom.xml does nothing for them and the built-in `central`
+# repository has snapshots disabled: the snapshot repository can only come from a
+# settings file. The repo commits one at .mvn/settings.xml (an activeByDefault
+# profile adding the central-snapshots repository AND pluginRepository), and every
+# Maven invocation below passes `-s "$GITHUB_WORKSPACE/.mvn/settings.xml"`
+# explicitly rather than leaning on .mvn/maven.config, which only takes effect when
+# Maven is launched from the directory holding .mvn/.
+#
+# The third-party dependency + plugin closure is warmed via setup-java's built-in
+# `cache: maven`. On top of that, every leg runs one throwaway `clean verify` with
+# -Ddemo.weight=0 (all test sleeps zeroed, so it takes seconds) BEFORE its timed
+# build, which is what makes the timings trustworthy:
+#   - the mvnflight extension, the Takari smart builder, the surefire/junit test
+#     stack and the compiler/jar/resources plugins are all resolved into ~/.m2
+#     before the stopwatch starts — a "warm" leg must never silently download ~100
+#     artifacts into the middle of a profiled build, and
+#   - the cold-repo leg gets a warm io/github/mvnflight to seed its scratch
+#     repository from (see that leg's comment).
+# The warm-up passes -U so each grid profiles the latest published snapshot of the
+# extension; on a cache hit it downloads nothing else. On the very first run it is
+# also what fills the cache entry that setup-java's post-step saves for the legs
+# that follow (the matrix runs one leg at a time, so leg N+1 restores it).
+#
+# GitHub Pages serves one site per repo, so this workflow re-publishes the whole
+# site: it first seeds site/ from the CURRENTLY-LIVE Pages site (so the sections
+# owned by the other workflows — /parallel and /reference — are preserved), then
+# rebuilds the scaling grid under scaling/ on top. Seeding from the live site is
+# durable: it does not depend on the other workflows' report artifacts, which
+# expire. The other workflows do the reciprocal for /scaling.
+#
+# One-time repo setup: Settings -> Pages -> Build and deployment -> Source = "GitHub Actions".
+#
+# The index_only dispatch input skips the whole report matrix and re-publishes
+# the site with scaling/index.html regenerated from the reports already live —
+# the cheap path when only gen-grid-index.sh changed.
+
+on:
+  # Manual only.
+  workflow_dispatch:
+    inputs:
+      index_only:
+        description: >-
+          Skip the report builds and re-publish the site with the scaling/
+          grid index regenerated from the reports already on the live site
+          (minutes instead of hours; use after an index-generator fix).
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # The mvnd version is pinned in THREE places that must stay in sync: the
+  # ./mvndw and ./mvndw.cmd wrappers (for local runs) and this variable (for the
+  # CI reference leg). Bump all three together.
+  MVND_VERSION: 1.0.6
+
+jobs:
+  report:
+    name: ${{ matrix.builder }} · T${{ matrix.threads }} · C2-${{ matrix.c2 }}${{ matrix.cache == 'none' && ' · no-cache' || '' }}
+    # Skipped on index_only runs; deploy still runs via its `if: always()`.
+    if: ${{ !inputs.index_only }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Run the report legs one at a time so the profiled builds don't compete for
+      # the runner and stay comparable.
+      max-parallel: 1
+      matrix:
+        # The grid: each scheduler at every thread width from 1 to the module
+        # count (10), each run with C2 on and off. The mvnd reference legs are
+        # added via include (one per C2 state), plus one no-cache leg (default
+        # builder, -T1, empty local repo) that shows the dependency-download
+        # cost; the explicit cache dimension (single value: warm) is what makes
+        # that include a NEW combination — without it, GitHub would merge
+        # `cache: none` into the existing default/T1/C2-on leg instead.
+        builder: [default, smart]
+        threads: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        # Quoted on purpose: YAML 1.1 resolves bare on/off to booleans, and a
+        # `false` here would drop the -noC2 suffix and make every C2-off leg
+        # collide with its C2-on twin on the artifact name.
+        c2: ['on', 'off']
+        cache: [warm]
+        include:
+          - builder: default
+            threads: 1
+            c2: 'on'
+            cache: none
+          - builder: mvnd
+            threads: 0
+            c2: 'on'
+          - builder: mvnd
+            threads: 0
+            c2: 'off'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          # The cache key hashes this project's poms plus its builder extensions,
+          # so it changes when a dependency, a plugin version or an extension
+          # version changes — and stays stable across the grid, which is what lets
+          # leg N+1 restore on an exact hit and download nothing.
+          cache-dependency-path: |
+            **/pom.xml
+            .mvn/extensions.xml
+
+      # Install + cache the Maven Daemon for the mvnd leg only (vendored from
+      # quick-perf/quickperf, see .github/actions/setup-mvnd).
+      - name: Set up Maven Daemon (mvnd)
+        if: ${{ matrix.builder == 'mvnd' }}
+        uses: ./.github/actions/setup-mvnd
+        with:
+          version: ${{ env.MVND_VERSION }}
+
+      # UNTIMED warm-up: resolve the whole closure — the mvnflight extension from
+      # Central snapshots (-U so the grid profiles the latest published one), the
+      # Takari smart builder, and every plugin the lifecycle touches — into ~/.m2
+      # before the profiled build starts. -Ddemo.weight=0 zeroes every test sleep,
+      # so this costs seconds and the artifacts it caches are identical whatever
+      # the leg's builder, thread count or fork settings. Nothing here is measured.
+      - name: Warm the local repository (untimed)
+        run: |
+          mvn -B -ntp -U -T4 -Ddemo.weight=0 \
+            -s "$GITHUB_WORKSPACE/.mvn/settings.xml" \
+            clean verify
+
+      # Resolve the report file name for this scenario.
+      - name: Resolve scenario
+        id: s
+        run: |
+          suffix=""
+          [ "${{ matrix.cache }}" = "none" ] && suffix="-noCache"
+          [ "${{ matrix.c2 }}" = "off" ] && suffix="${suffix}-noC2"
+          case "${{ matrix.builder }}" in
+            default) echo "out=report-default-T${{ matrix.threads }}${suffix}.html" ;;
+            smart)   echo "out=report-smart-T${{ matrix.threads }}${suffix}.html" ;;
+            mvnd)    echo "out=report-mvnd${suffix}.html" ;;
+          esac >> "$GITHUB_OUTPUT"
+
+      # Run the profiled build. The project carries its own .mvn/extensions.xml
+      # (mvnflight + takari-smart-builder), so the build is instrumented and renders
+      # target/mvnflight/report.html. The full test sleeps are honored (no cap):
+      # 2 s for core and app, 18 s per filler lib, 8 s per pipe link.
+      - name: Run profiled build
+        run: |
+          set -euo pipefail
+          settings="$GITHUB_WORKSPACE/.mvn/settings.xml"
+          # For the "C2-off" legs, disable the C2 JIT tier (keep only C1) on both
+          # the build JVM and the forked test JVMs. The build JVM gets the flag via
+          # MAVEN_OPTS (mvn) or -Dmvnd.jvmArgs (mvnd daemon); the forks get it via
+          # -Dtest.argLine, which the pom prepends ahead of mvnflight's -javaagent.
+          fork_args=()
+          daemon_args=()
+          repo_args=()
+          if [ "${{ matrix.c2 }}" = "off" ]; then
+            export MAVEN_OPTS="${MAVEN_OPTS:-} -XX:TieredStopAtLevel=1"
+            fork_args=("-Dtest.argLine=-XX:TieredStopAtLevel=1")
+            daemon_args=("-Dmvnd.jvmArgs=-XX:TieredStopAtLevel=1")
+          fi
+          if [ "${{ matrix.cache }}" = "none" ]; then
+            # No-cache leg: point Maven at a scratch local repo seeded with ONLY
+            # the mvnflight artifacts, copied out of the warm ~/.m2 the warm-up
+            # step above filled. Every plugin and project dependency is then
+            # downloaded during the profiled build and shows up in the report's
+            # "Maven downloads" metric.
+            # The extension IS on Central snapshots now, so a fully empty repo
+            # would also work — the seeding is kept deliberately, so this leg
+            # measures exactly what it measured before (the project's own
+            # dependency closure, not the profiler's) and stays comparable with
+            # the reports already published.
+            # Seed the mvnflight-* artifacts ONLY. io/github/mvnflight also holds
+            # io/github/mvnflight/examples — this reactor's own groupId
+            # (io.github.mvnflight.examples) — and copying the directory wholesale
+            # would seed core, lib-01..04, pipe-1..4, app and parallel-tests into
+            # the "cold" repository, so the leg would no longer measure the
+            # project's own download cost at all.
+            rm -rf "$RUNNER_TEMP/cold-repo"
+            mkdir -p "$RUNNER_TEMP/cold-repo/io/github/mvnflight"
+            cp -r ~/.m2/repository/io/github/mvnflight/mvnflight-* \
+              "$RUNNER_TEMP/cold-repo/io/github/mvnflight/"
+            repo_args=("-Dmaven.repo.local=$RUNNER_TEMP/cold-repo")
+          fi
+          case "${{ matrix.builder }}" in
+            default) mvn  -B -ntp -T${{ matrix.threads }}          -s "$settings" "${repo_args[@]}" "${fork_args[@]}" clean verify ;;
+            smart)   mvn  -B -ntp -T${{ matrix.threads }} -b smart -s "$settings" "${repo_args[@]}" "${fork_args[@]}" clean verify ;;
+            mvnd)    mvnd -B -ntp                                  -s "$settings" "${repo_args[@]}" "${daemon_args[@]}" "${fork_args[@]}" clean verify ;;
+          esac
+
+      - name: Collect report
+        if: always()
+        run: |
+          mkdir -p dist
+          src="target/mvnflight/report.html"
+          out="${{ steps.s.outputs.out }}"
+          if [ -f "$src" ]; then
+            cp "$src" "dist/$out"
+          else
+            echo "No report produced for ${{ matrix.builder }} / T${{ matrix.threads }}" >&2
+            exit 1
+          fi
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.s.outputs.out }}
+          path: dist/${{ steps.s.outputs.out }}
+          retention-days: 7
+          if-no-files-found: error
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: report
+    # Publish whatever reports succeeded, even if some matrix legs failed — and on
+    # index_only runs, where the report job is skipped entirely.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Needed for the .github/scripts/*.sh generators below — the deploy job runs
+      # them from $GITHUB_WORKSPACE, so the repo must be checked out here (the
+      # artifact download steps alone don't populate the workspace).
+      - uses: actions/checkout@v4
+
+      # Seed site/ from the currently-live Pages site so this deploy preserves the
+      # sections it does NOT own (/parallel from fork-grid.yml and /reference from
+      # publish-reference-reports.yml). Mirroring the live site never expires,
+      # unlike re-fetching those workflows' report artifacts. Best effort by
+      # contract: on the very first deploy there is no live site at all, the mirror
+      # 404s, the script warns and exits 0, and the scaling grid deploys alone (the
+      # missing sections' links are simply omitted from the root hub).
+      - name: Seed site/ from the live Pages site (best effort)
+        run: bash .github/scripts/seed-from-live-site.sh site
+
+      # This workflow OWNS /scaling: rebuild it fresh from this run's reports. Drop
+      # any seeded grid reports first, so a leg that failed this run is not left
+      # showing a stale report from an earlier deploy. On index_only runs there are
+      # no fresh reports: keep the seeded (currently-live) ones and just regenerate
+      # the index from them.
+      - name: Reset scaling/ grid
+        run: |
+          rm -f site/scaling/index.html
+          if [ "${{ inputs.index_only }}" != "true" ]; then
+            rm -f site/scaling/report-*.html
+          fi
+
+      - name: Download this run's reports
+        if: ${{ !inputs.index_only }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: report-*
+          merge-multiple: true
+          path: site/scaling
+
+      # The shared grid generator, run from the directory holding the reports it
+      # describes. BACK_HREF climbs to the site root, which from /scaling/ is
+      # exactly one level up.
+      - name: Generate scaling/index.html (the -T grid)
+        env:
+          PAGE_TITLE: 'Maven build-performance examples · builder scaling'
+          PAGE_HEADING: 'Parallel (-T) and smart-builder scaling'
+          BACK_HREF: '../index.html'
+          PAGE_INTRO: >-
+            10-module reactor: core → 4 filler libs (18 s) + a 4-deep pipe chain (8 s
+            each = the 32 s critical path) → app. The smart builder ranks modules by
+            downstream chain length, so it starts the chain ahead of the cheap
+            fillers.<br>
+            Columns are headline metrics pulled from each report: cumulative JIT C2
+            compilation, Maven dependency download time and GC time can exceed wall
+            clock because they sum across parallel workers / JVMs.<br>
+            Wall-clock percentages are relative to the <strong>Default builder ·
+            -T1</strong> baseline (single-threaded), so lower is faster.<br>
+            Each scenario is shown twice: the normal run, then the same run with the
+            JVM's <strong>C2 JIT tier disabled</strong> (<code>-XX:TieredStopAtLevel=1</code>,
+            keeping only C1) on both the build and forked test JVMs — watch the JIT C2
+            compilation column drop to nearly nothing.<br>
+            The <strong>first row</strong> is the single-threaded default build run with
+            <strong>no local dependency cache</strong> (an empty local repository, seeded
+            with only the mvnflight extension): every plugin and project dependency is
+            downloaded during the build — compare its Maven downloads column with the
+            warm-cache rows below, which all reuse the local repository.
+        run: |
+          mkdir -p site/scaling
+          cd site/scaling
+          bash "$GITHUB_WORKSPACE/.github/scripts/gen-grid-index.sh"
+
+      # Use the SAME root-index generator as the other Pages workflows so the root
+      # landing page is identical regardless of which one deploys (see
+      # gen-root-index.sh). Each section's link is emitted only when its index
+      # exists: /parallel and /reference come from the live-site seed above,
+      # /scaling from the grid just rebuilt.
+      - name: Generate root index.html
+        run: ( cd site && bash "$GITHUB_WORKSPACE/.github/scripts/gen-root-index.sh" )
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # The blob upload to Azure occasionally fails on a transient network blip;
+      # retry once (a failed upload never finalizes the artifact).
+      - name: Upload Pages artifact
+        id: upload
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Upload Pages artifact (retry)
+        if: ${{ steps.upload.outcome == 'failure' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,3 @@
+# Reference reports (measured on real hardware, not a CI runner) are generated
+# locally by ./generate-local-reports.ps1 and land here as report-*.html.
+# No report HTML is committed to this repo; this file only anchors the path.

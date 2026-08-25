@@ -1,0 +1,141 @@
+name: Publish reference reports
+
+# Publishes the locally-generated mvnflight reports found under
+# published/reference/ to GitHub Pages at the reference/ subpath.
+#
+# These are REFERENCE reports: the same grid the scaling-grid.yml matrix
+# produces, but measured on real hardware — a workstation with stable clocks,
+# real cores and a warm local repository — instead of a shared, throttled CI
+# runner. They are produced by generate-local-reports.ps1 and are NOT committed
+# to the repo (each report is ~1.8 MB of self-contained HTML), so this workflow
+# runs NO build: it deploys whatever the checkout happens to carry. See the
+# README for how to generate and commit a grid before dispatching this.
+#
+# GitHub Pages serves a single site per repo, and every Pages workflow here
+# rebuilds site/ from scratch and deploys the whole thing. So, exactly like
+# scaling-grid.yml and fork-grid.yml do for each other, this workflow first
+# seeds site/ from the CURRENTLY-LIVE Pages site (.github/scripts/seed-from-live-
+# site.sh) — preserving the OTHER sections (the scaling/ and parallel/ grids) —
+# and only then rebuilds reference/ on top, so publishing the reference grid
+# does not clobber them. Seeding from the live site is durable: it does not
+# depend on the other workflows' report artifacts, which expire and used to make
+# a section vanish on re-run. Reciprocally, those workflows seed reference/ back
+# from the live site too, so it survives their deployments.
+#
+# One-time repo setup: Settings -> Pages -> Build and deployment -> Source = "GitHub Actions".
+
+on:
+  # Manual only.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish to GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Seed site/ from the currently-live Pages site so this deploy preserves the
+      # sections it does NOT own (the scaling/ grid from scaling-grid.yml and the
+      # parallel/ grid from fork-grid.yml). This replaces re-fetching both
+      # workflows' report artifacts, which expired after a week and silently
+      # dropped a section on re-run. Best effort: if there is no live site yet,
+      # nothing is seeded and the reference grid below still deploys.
+      - name: Seed site/ from the live Pages site (best effort)
+        run: bash .github/scripts/seed-from-live-site.sh site
+
+      # --- The payload: the reference reports -----------------------------------
+      # This workflow OWNS the reference/ section. Rebuild it fresh from
+      # published/reference/ with the same grid generator scaling/ and parallel/
+      # use, replacing whatever was seeded from the live site. All three sections
+      # sit one level under the site root, so the generator's ../index.html
+      # back-link lands on the root hub from any of them.
+      - name: Publish reference reports
+        env:
+          PAGE_TITLE: 'Maven build-performance examples · reference reports'
+          PAGE_HEADING: 'Reference reports — measured on real hardware'
+          BACK_HREF: '../index.html'
+          PAGE_INTRO: >-
+            The same builder × <code>-T</code> grid as the builder-scaling page, but
+            measured on a developer workstation — dedicated cores, stable clocks and a
+            warm local repository — instead of a shared, throttled GitHub-hosted
+            runner. That contrast is the whole point of this page: read the two side by
+            side (both are linked from <a href="../index.html">the hub</a>) to see how
+            much of a scaling curve is the build and how much is the machine underneath
+            it.<br>
+            Columns are headline metrics pulled from each report: cumulative JIT C2
+            compilation, Maven dependency download time and GC time can exceed wall
+            clock because they sum across parallel workers / JVMs.<br>
+            Wall-clock percentages are relative to the <strong>Default builder ·
+            -T1</strong> baseline (single-threaded) measured on the SAME machine, so
+            lower is faster and the percentages stay comparable with the CI grid even
+            though the absolute seconds do not.<br>
+            The <strong>first row</strong> is the single-threaded default build run with
+            <strong>no local dependency cache</strong> (an empty local repository, seeded
+            with only the mvnflight extension): every plugin and project dependency is
+            downloaded during the build — compare its Maven downloads column with the
+            warm-cache rows below, which all reuse the local repository.
+          # generate-local-reports.ps1 excludes the two mvnd legs by design, so
+          # leave them out rather than render two permanent em-dash rows.
+          SHOW_MVND: '0'
+        run: |
+          set -euo pipefail
+          src="published/reference"
+          # .gitkeep alone does not count: the directory is committed empty on
+          # purpose, so only report-*.html proves a grid was actually generated.
+          if ! ls "$src"/report-*.html >/dev/null 2>&1; then
+            echo "::error::No report-*.html found in $src/ — nothing to publish." >&2
+            echo "The reference grid is measured locally and is not committed to this repo;" >&2
+            echo "$src/ holds only a .gitkeep placeholder until you fill it." >&2
+            echo "To populate it, run the report generator on the machine you want to" >&2
+            echo "measure, then commit the result and re-dispatch this workflow:" >&2
+            echo >&2
+            echo "    pwsh ./generate-local-reports.ps1 -OutDir published/reference" >&2
+            echo "    git add published/reference/report-*.html && git commit && git push" >&2
+            echo >&2
+            echo "It writes one report-<builder>-T<n>[-noC2].html per matrix leg (plus" >&2
+            echo "report-default-T1-noCache.html) — the same file names scaling-grid.yml" >&2
+            echo "produces on CI. This workflow deploys the checkout as-is; it runs no build." >&2
+            exit 1
+          fi
+          rm -rf site/reference
+          mkdir -p site/reference
+          cp "$src"/report-*.html site/reference/
+          ( cd site/reference && bash "$GITHUB_WORKSPACE/.github/scripts/gen-grid-index.sh" )
+
+      - name: Generate root index.html
+        run: ( cd site && bash "$GITHUB_WORKSPACE/.github/scripts/gen-root-index.sh" )
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # The blob upload to Azure occasionally fails on a transient network blip;
+      # retry once (a failed upload never finalizes the artifact).
+      - name: Upload Pages artifact
+        id: upload
+        continue-on-error: true
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Upload Pages artifact (retry)
+        if: ${{ steps.upload.outcome == 'failure' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

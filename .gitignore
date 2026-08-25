@@ -1,0 +1,12 @@
+# Build output. Note that published/ is deliberately NOT ignored: the reference
+# reports under published/reference/ are meant to be committed and deployed.
+target/
+
+# mvnd distribution cache downloaded by ./mvndw
+.mvnd/
+
+# IDE / editor / OS cruft
+.idea/
+*.iml
+.vscode/
+.DS_Store
