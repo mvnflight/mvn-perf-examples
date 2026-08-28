@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>io.github.mvnflight.examples</groupId>
+        <groupId>io.github.mvn-perf.examples</groupId>
         <artifactId>mvn-perf-examples</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
@@ -16,13 +16,13 @@
          (demo.forkCount, default 1) they run serially (~75 s); pass
          -Ddemo.forkCount=5 (the .github/workflows/fork-grid.yml legs) and each class
          runs in its own fork JVM, so all five execute in one parallel wave and the
-         module's test phase collapses to ~15 s — mvnflight then renders one fork
+         module's test phase collapses to ~15 s — mvn-lens then renders one fork
          lane per JVM. This is INTRA-module test parallelism (Surefire forkCount),
          a different axis from the -T reactor parallelism. -->
 
     <dependencies>
         <dependency>
-            <groupId>io.github.mvnflight.examples</groupId>
+            <groupId>io.github.mvn-perf.examples</groupId>
             <artifactId>core</artifactId>
             <version>1.0.0-SNAPSHOT</version>
         </dependency>

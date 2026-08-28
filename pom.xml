@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.github.mvnflight.examples</groupId>
+    <groupId>io.github.mvn-perf.examples</groupId>
     <artifactId>mvn-perf-examples</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
@@ -14,7 +14,7 @@
         A 10-module reactor whose tests only sleep for fixed per-module durations.
         core fans out to four short "filler" libs (18 s each) and to a four-deep
         "pipe" chain (8 s each = the 32 s critical path); app joins them all.
-        Profiled by mvnflight to illustrate -T parallel scaling and how the Takari
+        Profiled by mvn-lens to illustrate -T parallel scaling and how the Takari
         smart builder schedules the critical-path chain ahead of the cheap fillers.
     </description>
 
@@ -71,12 +71,12 @@
              -Ddemo.forkCount=5 to run each of its five 15 s test classes in its own
              fork JVM, so they all execute in one parallel wave (the legs of
              .github/workflows/fork-grid.yml, published under /parallel/). Each fork
-             is independently instrumented by mvnflight, so the report shows one
+             is independently instrumented by mvn-lens, so the report shows one
              fork lane per JVM. -->
         <demo.forkCount>1</demo.forkCount>
 
         <!-- Extra fork JVM flags, empty by default. CI may set this (e.g.
-             -XX:TieredStopAtLevel=1); mvnflight appends its -javaagent to it. -->
+             -XX:TieredStopAtLevel=1); mvn-lens appends its -javaagent to it. -->
         <test.argLine></test.argLine>
     </properties>
 

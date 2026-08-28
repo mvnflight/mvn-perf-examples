@@ -1,7 +1,7 @@
 # Maven build-performance examples
 
 A single, self-contained Maven project that shows, with real
-[mvnflight](#what-is-mvnflight) reports, how a build scales with the **parallel
+[mvn-lens](#what-is-mvn-lens) reports, how a build scales with the **parallel
 builder** (`-T`) and the **Takari smart builder** (`-b smart`).
 
 The same project is run **locally** (Maven Wrapper + Maven Daemon wrapper) and
@@ -26,7 +26,7 @@ The same project is run **locally** (Maven Wrapper + Maven Daemon wrapper) and
   out across **parallel fork JVMs**. Pass `-Pparallel -Ddemo.forkCount=5` and each
   class runs in its own fork, so they all execute in a single parallel wave and the
   module's whole test phase collapses to its longest single test (~15 s) instead of
-  ~75 s serial — mvnflight then renders one **fork lane per JVM**. This is a
+  ~75 s serial — mvn-lens then renders one **fork lane per JVM**. This is a
   different axis from `-T` (it scales *within* a module, not across the reactor), and
   the two compose. It has its **own GitHub Pages page** (`parallel/`); the
   baseline page (`scaling/`) never builds the `parallel-tests` module.
@@ -60,14 +60,14 @@ An **extra independent leaf, `parallel-tests`** (five 15 s test classes), exists
 only to demonstrate intra-module test parallelism and is added to the reactor
 **only** under `-Pparallel` — the 10-module baseline above never builds it.
 
-## What is mvnflight?
+## What is mvn-lens?
 
-mvnflight is a JFR-based Maven build profiler: it loads as a Maven **core
+mvn-lens is a JFR-based Maven build profiler: it loads as a Maven **core
 extension**, instruments the Maven JVM and the forked test JVMs with Flight
 Recorder, and renders a single self-contained dashboard at
-`target/mvnflight/report.html`. Every report this repo publishes is one of those
+`target/mvnlens/report.html`. Every report this repo publishes is one of those
 dashboards. It ships to Maven Central snapshots as
-[`io.github.mvnflight:mvnflight-extension:0.1.0-SNAPSHOT`](https://central.sonatype.com/repository/maven-snapshots/io/github/mvnflight/mvnflight-extension/0.1.0-SNAPSHOT/).
+[`io.github.mvn-perf:mvn-lens-extension:0.1.0-SNAPSHOT`](https://central.sonatype.com/repository/maven-snapshots/io/github/mvn-perf/mvn-lens-extension/0.1.0-SNAPSHOT/).
 
 ### How the extension is resolved (nothing to install)
 
@@ -105,7 +105,7 @@ file would drop your mirror and credentials. In that case delete
 
 ## Run it locally
 
-Every run writes the dashboard to `target/mvnflight/report.html`. Run the commands
+Every run writes the dashboard to `target/mvnlens/report.html`. Run the commands
 from the repo root.
 
 | Goal | Command |
@@ -136,7 +136,7 @@ daemon's handling of `.mvn/maven.config` is its own; `./mvnw` needs no such flag
 | `demo.sleep.minMs` / `maxMs` | per module | each module's POM sets these **equal** for a fixed duration (core/app 2 s, libs 18 s, pipe links 8 s) |
 | `demo.sleep.seed` | `42` | only used when `minMs < maxMs` (random mode) |
 | `demo.sleep.random` | `false` | only used when `minMs < maxMs`; `true` = genuinely random |
-| `demo.forkCount` | `1` | Surefire fork JVMs per module. With `-Pparallel`, `5` runs each of the `parallel-tests` module's five test classes in its own fork (one mvnflight fork lane each, one parallel wave); a no-op for the single-test-class modules |
+| `demo.forkCount` | `1` | Surefire fork JVMs per module. With `-Pparallel`, `5` runs each of the `parallel-tests` module's five test classes in its own fork (one mvn-lens fork lane each, one parallel wave); a no-op for the single-test-class modules |
 
 Durations are **fixed per module** (not random), so the `-T1…-T10` and
 default-vs-smart reports are directly comparable. Scale them all at once with
@@ -154,14 +154,14 @@ default-vs-smart reports are directly comparable. Scale them all at once with
 ## In CI / on GitHub Pages
 
 Three manual (`workflow_dispatch`) workflows publish three sections of the single
-Pages site at **https://mvnflight.github.io/mvn-perf-examples/**. None of them
+Pages site at **https://mvn-perf.github.io/mvn-perf-examples/**. None of them
 builds the profiler: it resolves from Central snapshots like any other dependency.
 
 **`scaling/` — builder × `-T` grid** (`.github/workflows/scaling-grid.yml`,
 *Builder scaling grid*):
 
 1. runs a **no-cache first scenario** — default builder, `-T1`, against a scratch
-   local repository pre-seeded with only the mvnflight artifacts, so the report
+   local repository pre-seeded with only the mvn-lens artifacts, so the report
    shows the full dependency-download cost of the project's own dependencies. All
    other scenarios reuse the warm local dependency cache,
 2. runs the demo at **`-T1 … -T10`** with the **default** and **smart** builders,
@@ -224,14 +224,14 @@ mvnd leg of the scaling grid installs the daemon through the local
 
 ### A fourth workflow, which publishes nothing
 
-**`mvnflight overhead benchmark`** (`.github/workflows/bench-script.yml`) is the
+**`mvn-lens overhead benchmark`** (`.github/workflows/bench-script.yml`) is the
 odd one out: it does not touch the Pages site. It points
 [`scripts/bench-maven-builders.sh`](./scripts/README.md) at a **third-party**
 reactor ([`google/gson`](https://github.com/google/gson)) and builds every
-configuration **twice** — once with the mvnflight extension absent from that
+configuration **twice** — once with the mvn-lens extension absent from that
 project's `.mvn/extensions.xml` and once with it added — so the gap between the two
 curves is the profiler's own **build overhead**. Everywhere else in this repo
-mvnflight is the instrument; here it is the thing being measured.
+mvn-lens is the instrument; here it is the thing being measured.
 
 The result is the **`bench-report`** artifact on the run (CSV + a self-contained
 HTML chart + one saved dashboard per instrumented build), downloadable from the

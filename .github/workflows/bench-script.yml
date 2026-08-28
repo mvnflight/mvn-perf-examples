@@ -1,17 +1,17 @@
-name: mvnflight overhead benchmark
+name: mvn-lens overhead benchmark
 
 # Runs scripts/bench-maven-builders.sh end to end on Linux + JDK 21 against a
 # small, Apache-2.0 licensed GitHub project (google/gson), then uploads the
-# generated CSV + HTML report (plus the saved mvnflight dashboards) as a build
+# generated CSV + HTML report (plus the saved mvn-lens dashboards) as a build
 # artifact. The script is also lint-checked (bash -n + ShellCheck). Only runs when
 # the script or this workflow changes; can also be launched manually from the
 # Actions tab.
 #
 # How this differs from the two grid workflows
 # --------------------------------------------
-# scaling-grid.yml and fork-grid.yml profile THIS repo's reactor with mvnflight
+# scaling-grid.yml and fork-grid.yml profile THIS repo's reactor with mvn-lens
 # always on, and publish the dashboards to GitHub Pages. This one profiles a
-# THIRD-PARTY reactor and treats mvnflight itself as the variable: every
+# THIRD-PARTY reactor and treats mvn-lens itself as the variable: every
 # configuration (thread count x builder) is built twice, once with the extension
 # absent from the benchmarked project's .mvn/extensions.xml and once with it
 # added, so the gap between the two curves is the profiler's build overhead. It
@@ -20,7 +20,7 @@ name: mvnflight overhead benchmark
 # Resolving the extension in a project that is not this one
 # ---------------------------------------------------------
 # The benchmark clones gson into a scratch directory. That clone has no
-# .mvn/settings.xml of its own, and `io.github.mvnflight:mvnflight-extension`
+# .mvn/settings.xml of its own, and `io.github.mvn-perf:mvn-lens-extension`
 # lives only in the Maven Central *snapshot* repository — which the built-in
 # `central` repository has disabled, and which a <repositories> block could not
 # supply anyway because core extensions are resolved by Maven's bootstrap before
@@ -28,8 +28,8 @@ name: mvnflight overhead benchmark
 # .mvn/settings.xml with --settings, and passes it as -s to every build it runs.
 #
 # The extension closure is warmed into ~/.m2 BEFORE the matrix starts. The
-# script's own warm-up build deliberately runs with mvnflight off (it warms the
-# baseline), so without this step the first mvnflight=on build would download the
+# script's own warm-up build deliberately runs with mvn-lens off (it warms the
+# baseline), so without this step the first mvnlens=on build would download the
 # extension mid-measurement and be charged for it — precisely the number this
 # workflow exists to report. The warm-up also covers takari-smart-builder 1.1.0,
 # which this repo pins in .mvn/extensions.xml and which the script injects into
@@ -75,7 +75,7 @@ jobs:
           java-version: '21'
           cache: maven
 
-      # Pull the latest mvnflight snapshot and the Takari smart builder into ~/.m2
+      # Pull the latest mvn-lens snapshot and the Takari smart builder into ~/.m2
       # by building this repo's own reactor once (tests skipped, so it is quick).
       # -U forces the snapshot check here rather than inside a timed build.
       - name: Warm the extension closure into ~/.m2
@@ -86,7 +86,7 @@ jobs:
 
       # google/gson is a small, multi-module, Apache-2.0 Maven project. The script
       # clones it, makes the Takari smart builder available, and times the default
-      # builder vs. -b smart for t = 0..2 — each without and with mvnflight (the
+      # builder vs. -b smart for t = 0..2 — each without and with mvn-lens (the
       # extension overhead dimension). Tests are skipped to keep the matrix fast.
       - name: Benchmark google/gson (clone, build matrix, render report)
         run: |

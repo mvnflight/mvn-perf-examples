@@ -12,7 +12,7 @@ name: Test-fork parallelism grid
 # contrasts parallel forks against no forking at all.
 #   forkCount=5  parallel-tests' five test classes each run in their own fork JVM
 #                (one parallel wave): the module's test phase collapses from ~75 s
-#                serial to ~15 s, and mvnflight renders one fork lane per JVM.
+#                serial to ~15 s, and mvn-lens renders one fork lane per JVM.
 #   forkCount=1  the five classes run serially in a single fork JVM (~75 s) — the
 #                "1 fork" curve.
 #   forkCount=0  Surefire runs the tests INSIDE the Maven build JVM (no fork at all):
@@ -27,7 +27,7 @@ name: Test-fork parallelism grid
 # (report-<builder>-T<n>-f<fork>[-noC2].html); the shared index generator reads all
 # three fork levels and draws 12 curves per chart (FORK_LEVELS, see the deploy job).
 #
-# The mvnflight extension is not built here: .mvn/extensions.xml pins the floating
+# The mvn-lens extension is not built here: .mvn/extensions.xml pins the floating
 # 0.1.0-SNAPSHOT, resolved from the Maven Central snapshot repository that
 # .mvn/settings.xml adds. Maven reads extensions.xml during BOOTSTRAP, before any
 # POM — a <repositories> block in pom.xml is never consulted for it, so only a
@@ -73,7 +73,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Resolve the reactor's FULL dependency closure once — the mvnflight extension
+  # Resolve the reactor's FULL dependency closure once — the mvn-lens extension
   # snapshot included — into setup-java's `cache: maven` entry, so every timed leg
   # below restores a warm local repository. Without it the first-time download cost
   # would land entirely on whichever leg happens to run first on a cold cache and
@@ -160,7 +160,7 @@ jobs:
             **/pom.xml
             .mvn/extensions.xml
 
-      # UNTIMED warm-up: resolve the whole closure — the mvnflight extension from
+      # UNTIMED warm-up: resolve the whole closure — the mvn-lens extension from
       # Central snapshots (-U so the grid profiles the latest published one), the
       # Takari smart builder, and every plugin the lifecycle touches — into ~/.m2
       # before the stopwatch starts. The warm job above fills the shared cache, but a
@@ -199,7 +199,7 @@ jobs:
           set -euo pipefail
           # For the "C2-off" legs, disable the C2 JIT tier (keep only C1) on both
           # the build JVM (MAVEN_OPTS) and the forked test JVMs (-Dtest.argLine, which
-          # the pom prepends ahead of mvnflight's -javaagent). At forkCount=0 there is
+          # the pom prepends ahead of mvn-lens's -javaagent). At forkCount=0 there is
           # no fork JVM, so -Dtest.argLine is ignored and MAVEN_OPTS alone disables C2
           # for the tests (they run in the build JVM).
           fork_args=()
@@ -219,7 +219,7 @@ jobs:
         if: always()
         run: |
           mkdir -p dist
-          src="target/mvnflight/report.html"
+          src="target/mvnlens/report.html"
           out="${{ steps.s.outputs.out }}"
           if [ -f "$src" ]; then
             cp "$src" "dist/$out"
@@ -301,7 +301,7 @@ jobs:
             <strong><code>forkCount=5</code></strong> runs <code>parallel-tests</code>'
             five independent 15 s test classes each in their own fork JVM — one parallel
             wave, so the module's test phase collapses from ~75 s serial to ~15 s and
-            mvnflight shows one fork lane per JVM. <strong><code>forkCount=1</code></strong>
+            mvn-lens shows one fork lane per JVM. <strong><code>forkCount=1</code></strong>
             runs the five classes serially in a single fork (~75 s). <strong><code>forkCount=0</code></strong>
             ("no fork") runs them <em>inside the Maven build JVM</em> — no fork lane, the
             test time folds into the parent recording. Surefire forbids

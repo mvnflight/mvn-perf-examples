@@ -2,11 +2,11 @@ name: Builder scaling grid
 
 # Builds the example project at the repo root (a 10-module reactor — 4 filler
 # libs + a 4-deep pipe chain — whose tests only sleep) across many scenarios and
-# publishes one mvnflight report.html per scenario to GitHub Pages under the
+# publishes one mvn-lens report.html per scenario to GitHub Pages under the
 # scaling/ subpath:
 #
 #   - a no-cache leg FIRST: default builder at -T1 against an empty local repo
-#     (seeded with only the mvnflight artifacts), so every plugin and project
+#     (seeded with only the mvn-lens artifacts), so every plugin and project
 #     dependency is downloaded during the profiled build — the "Maven downloads"
 #     baseline. Every other leg uses the warm local dependency cache.
 #   - default multithreaded builder at -T1 .. -T10  (1 thread .. one per module)
@@ -23,7 +23,7 @@ name: Builder scaling grid
 #
 # Where the profiler comes from
 # -----------------------------
-# .mvn/extensions.xml pins io.github.mvnflight:mvnflight-extension:0.1.0-SNAPSHOT,
+# .mvn/extensions.xml pins io.github.mvn-perf:mvn-lens-extension:0.1.0-SNAPSHOT,
 # which is published to the Maven Central snapshot repository. Build extensions
 # are resolved by Maven's bootstrap, BEFORE the project POM is read, so a
 # <repositories> block in pom.xml does nothing for them and the built-in `central`
@@ -38,11 +38,11 @@ name: Builder scaling grid
 # `cache: maven`. On top of that, every leg runs one throwaway `clean verify` with
 # -Ddemo.weight=0 (all test sleeps zeroed, so it takes seconds) BEFORE its timed
 # build, which is what makes the timings trustworthy:
-#   - the mvnflight extension, the Takari smart builder, the surefire/junit test
+#   - the mvn-lens extension, the Takari smart builder, the surefire/junit test
 #     stack and the compiler/jar/resources plugins are all resolved into ~/.m2
 #     before the stopwatch starts — a "warm" leg must never silently download ~100
 #     artifacts into the middle of a profiled build, and
-#   - the cold-repo leg gets a warm io/github/mvnflight to seed its scratch
+#   - the cold-repo leg gets a warm io/github/mvn-perf to seed its scratch
 #     repository from (see that leg's comment).
 # The warm-up passes -U so each grid profiles the latest published snapshot of the
 # extension; on a cache hit it downloads nothing else. On the very first run it is
@@ -151,7 +151,7 @@ jobs:
         with:
           version: ${{ env.MVND_VERSION }}
 
-      # UNTIMED warm-up: resolve the whole closure — the mvnflight extension from
+      # UNTIMED warm-up: resolve the whole closure — the mvn-lens extension from
       # Central snapshots (-U so the grid profiles the latest published one), the
       # Takari smart builder, and every plugin the lifecycle touches — into ~/.m2
       # before the profiled build starts. -Ddemo.weight=0 zeroes every test sleep,
@@ -177,8 +177,8 @@ jobs:
           esac >> "$GITHUB_OUTPUT"
 
       # Run the profiled build. The project carries its own .mvn/extensions.xml
-      # (mvnflight + takari-smart-builder), so the build is instrumented and renders
-      # target/mvnflight/report.html. The full test sleeps are honored (no cap):
+      # (mvn-lens + takari-smart-builder), so the build is instrumented and renders
+      # target/mvnlens/report.html. The full test sleeps are honored (no cap):
       # 2 s for core and app, 18 s per filler lib, 8 s per pipe link.
       - name: Run profiled build
         run: |
@@ -187,7 +187,7 @@ jobs:
           # For the "C2-off" legs, disable the C2 JIT tier (keep only C1) on both
           # the build JVM and the forked test JVMs. The build JVM gets the flag via
           # MAVEN_OPTS (mvn) or -Dmvnd.jvmArgs (mvnd daemon); the forks get it via
-          # -Dtest.argLine, which the pom prepends ahead of mvnflight's -javaagent.
+          # -Dtest.argLine, which the pom prepends ahead of mvn-lens's -javaagent.
           fork_args=()
           daemon_args=()
           repo_args=()
@@ -198,7 +198,7 @@ jobs:
           fi
           if [ "${{ matrix.cache }}" = "none" ]; then
             # No-cache leg: point Maven at a scratch local repo seeded with ONLY
-            # the mvnflight artifacts, copied out of the warm ~/.m2 the warm-up
+            # the mvn-lens artifacts, copied out of the warm ~/.m2 the warm-up
             # step above filled. Every plugin and project dependency is then
             # downloaded during the profiled build and shows up in the report's
             # "Maven downloads" metric.
@@ -207,16 +207,16 @@ jobs:
             # measures exactly what it measured before (the project's own
             # dependency closure, not the profiler's) and stays comparable with
             # the reports already published.
-            # Seed the mvnflight-* artifacts ONLY. io/github/mvnflight also holds
-            # io/github/mvnflight/examples — this reactor's own groupId
-            # (io.github.mvnflight.examples) — and copying the directory wholesale
+            # Seed the mvn-lens-* artifacts ONLY. io/github/mvn-perf also holds
+            # io/github/mvn-perf/examples — this reactor's own groupId
+            # (io.github.mvn-perf.examples) — and copying the directory wholesale
             # would seed core, lib-01..04, pipe-1..4, app and parallel-tests into
             # the "cold" repository, so the leg would no longer measure the
             # project's own download cost at all.
             rm -rf "$RUNNER_TEMP/cold-repo"
-            mkdir -p "$RUNNER_TEMP/cold-repo/io/github/mvnflight"
-            cp -r ~/.m2/repository/io/github/mvnflight/mvnflight-* \
-              "$RUNNER_TEMP/cold-repo/io/github/mvnflight/"
+            mkdir -p "$RUNNER_TEMP/cold-repo/io/github/mvn-perf"
+            cp -r ~/.m2/repository/io/github/mvn-perf/mvn-lens-* \
+              "$RUNNER_TEMP/cold-repo/io/github/mvn-perf/"
             repo_args=("-Dmaven.repo.local=$RUNNER_TEMP/cold-repo")
           fi
           case "${{ matrix.builder }}" in
@@ -229,7 +229,7 @@ jobs:
         if: always()
         run: |
           mkdir -p dist
-          src="target/mvnflight/report.html"
+          src="target/mvnlens/report.html"
           out="${{ steps.s.outputs.out }}"
           if [ -f "$src" ]; then
             cp "$src" "dist/$out"
@@ -317,7 +317,7 @@ jobs:
             compilation column drop to nearly nothing.<br>
             The <strong>first row</strong> is the single-threaded default build run with
             <strong>no local dependency cache</strong> (an empty local repository, seeded
-            with only the mvnflight extension): every plugin and project dependency is
+            with only the mvn-lens extension): every plugin and project dependency is
             downloaded during the build — compare its Maven downloads column with the
             warm-cache rows below, which all reuse the local repository.
         run: |

@@ -1,6 +1,6 @@
 name: Publish reference reports
 
-# Publishes the locally-generated mvnflight reports found under
+# Publishes the locally-generated mvn-lens reports found under
 # published/reference/ to GitHub Pages at the reference/ subpath.
 #
 # These are REFERENCE reports: the same grid the scaling-grid.yml matrix
@@ -84,7 +84,7 @@ jobs:
             though the absolute seconds do not.<br>
             The <strong>first row</strong> is the single-threaded default build run with
             <strong>no local dependency cache</strong> (an empty local repository, seeded
-            with only the mvnflight extension): every plugin and project dependency is
+            with only the mvn-lens extension): every plugin and project dependency is
             downloaded during the build — compare its Maven downloads column with the
             warm-cache rows below, which all reuse the local repository.
           # generate-local-reports.ps1 excludes the two mvnd legs by design, so

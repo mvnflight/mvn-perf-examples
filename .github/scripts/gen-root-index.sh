@@ -25,7 +25,7 @@
 # section, the run list (a section is missing from the hub precisely when its
 # workflow has not published yet, so that is the page to check), and the Maven
 # Central snapshot directory the profiler resolves from — no workflow here builds
-# it. The mvnflight repository itself is deliberately NOT linked: it is private,
+# it. The mvn-lens repository itself is deliberately NOT linked: it is private,
 # so the link would 404 for every visitor.
 #
 # Shared by all Pages workflows so the root index is IDENTICAL no matter
@@ -45,9 +45,9 @@ set -euo pipefail
 # Public base url of this Pages site, used for the per-card absolute urls. The
 # repo link below is hard-coded the same way: this generator only ever publishes
 # this one site, and GITHUB_* carries no reliable Pages url to derive it from.
-SITE="https://mvnflight.github.io/mvn-perf-examples"
-REPO="https://github.com/mvnflight/mvn-perf-examples"
-SNAPSHOTS="https://central.sonatype.com/repository/maven-snapshots/io/github/mvnflight"
+SITE="https://mvn-perf.github.io/mvn-perf-examples"
+REPO="https://github.com/mvn-perf/mvn-perf-examples"
+SNAPSHOTS="https://central.sonatype.com/repository/maven-snapshots/io/github/mvn-perf"
 
 {
   cat <<EOF
@@ -111,7 +111,7 @@ EOF
     <li><span class="lbl">Repository</span> — <a href="$REPO">$REPO</a></li>
     <li><span class="lbl">Workflows that publish these sections</span> — <a href="$REPO/tree/main/.github/workflows">$REPO/tree/main/.github/workflows</a></li>
     <li><span class="lbl">Workflow runs</span> — <a href="$REPO/actions">$REPO/actions</a></li>
-    <li><span class="lbl">The mvnflight profiler, on Maven Central snapshots</span> — <a href="$SNAPSHOTS/">$SNAPSHOTS/</a></li>
+    <li><span class="lbl">The mvn-lens profiler, on Maven Central snapshots</span> — <a href="$SNAPSHOTS/">$SNAPSHOTS/</a></li>
   </ul>
 </body>
 </html>

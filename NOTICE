@@ -8,7 +8,7 @@ This project is a synthetic multi-module Maven reactor whose tests do nothing bu
 sleep for fixed, deterministic durations. It exists to measure and illustrate
 Maven build performance — reactor parallelism (-T), the Takari smart builder's
 critical-path scheduling, and Surefire's intra-module fork parallelism — using
-build profiles produced by the mvnflight JFR build profiler.
+build profiles produced by the mvn-lens JFR build profiler.
 
 Third-party code REDISTRIBUTED in this repository
 -------------------------------------------------
@@ -46,8 +46,8 @@ Third-party artifacts RESOLVED at build time (not redistributed)
     https://github.com/takari/takari-smart-builder
     Apache License 2.0
 
-  - mvnflight — Maven JFR Build Profiler, resolved as the Maven coordinates
-    io.github.mvnflight:mvnflight-extension:0.1.0-SNAPSHOT from the Maven Central
+  - mvn-lens — Maven JFR Build Profiler, resolved as the Maven coordinates
+    io.github.mvn-perf:mvn-lens-extension:0.1.0-SNAPSHOT from the Maven Central
     snapshot repository
-    https://central.sonatype.com/repository/maven-snapshots/io/github/mvnflight/mvnflight-extension/
+    https://central.sonatype.com/repository/maven-snapshots/io/github/mvn-perf/mvn-lens-extension/
     Apache License 2.0
