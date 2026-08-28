@@ -55,14 +55,14 @@ Positional (required):
 Options:
   --c2-off                  Also run each build with C2 JIT disabled
                             (-XX:TieredStopAtLevel=1); adds the dashed curves.
-  --no-mvnflight            Skip the mvnflight on/off dimension. By default each
+  --no-mvnlens              Skip the mvn-lens on/off dimension. By default each
                             config is run twice — once without and once with the
-                            mvnflight extension — to measure its build overhead.
-  --mvnflight-version <v>   mvnflight-extension version to enable (default:
+                            mvn-lens extension — to measure its build overhead.
+  --mvnlens-version <v>     mvn-lens-extension version to enable (default:
                             0.1.0-SNAPSHOT; must be resolvable — see --settings).
   --settings <path>         Maven settings file passed as -s to every build. Needed
                             when the benchmarked project cannot otherwise resolve
-                            the mvnflight extension (e.g. the Central snapshot repo
+                            the mvn-lens extension (e.g. the Central snapshot repo
                             in this repo's .mvn/settings.xml).
   --goals "<goals>"         Maven goals/phases to time (default: "clean package").
   --html <path>             HTML output path (default: <csv-path> with .html).
@@ -89,8 +89,8 @@ EOF
 
 # --- argument parsing -------------------------------------------------------
 C2_OFF=0
-MVNFLIGHT=1
-MVNFLIGHT_VERSION="0.1.0-SNAPSHOT"
+MVNLENS=1
+MVNLENS_VERSION="0.1.0-SNAPSHOT"
 SETTINGS=""
 GOALS="clean package"
 HTML=""
@@ -109,8 +109,8 @@ POSITIONAL=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --c2-off)            C2_OFF=1; shift ;;
-    --no-mvnflight)      MVNFLIGHT=0; shift ;;
-    --mvnflight-version) MVNFLIGHT_VERSION="${2:?--mvnflight-version needs a value}"; shift 2 ;;
+    --no-mvnlens)      MVNLENS=0; shift ;;
+    --mvnlens-version) MVNLENS_VERSION="${2:?--mvnlens-version needs a value}"; shift 2 ;;
     --settings)       SETTINGS="${2:?--settings needs a value}"; shift 2 ;;
     --goals)          GOALS="${2:?--goals needs a value}"; shift 2 ;;
     --html)           HTML="${2:?--html needs a value}"; shift 2 ;;
@@ -157,9 +157,9 @@ fi
 # mkdir -p the parent dirs of the CSV/HTML.
 mkdir -p "$(dirname "$CSV")" "$(dirname "$HTML")" || die "cannot create output directories"
 
-# Saved mvnflight dashboards live next to the HTML so the relative links in the
+# Saved mvn-lens dashboards live next to the HTML so the relative links in the
 # page resolve; REPORT_REL_DIR is the href prefix used from the page.
-REPORT_REL_DIR="mvnflight-reports"
+REPORT_REL_DIR="mvnlens-reports"
 REPORTDIR="$(dirname "$HTML")/$REPORT_REL_DIR"
 
 # ============================================================================
@@ -199,9 +199,9 @@ parse_total_time() {
 # baseline right), x starts at 0, dashed series are conditional.
 #
 # Each builder (Default=blue, Smart=orange) gets a SOLID and a DASHED curve. The
-# solid/dashed dimension is chosen by the caller: by default it is mvnflight
+# solid/dashed dimension is chosen by the caller: by default it is mvn-lens
 # off (solid) vs on (dashed) — the gap is the extension's overhead — or, in
-# legacy --no-mvnflight mode, C2 on (solid) vs off (dashed).
+# legacy --no-mvnlens mode, C2 on (solid) vs off (dashed).
 #
 # Args: $1 = baseline seconds ("" to omit the right axis); $2 = has_dashed (1/0);
 #       $3 = x-axis max (forces ticks 0..N even when top points are missing);
@@ -327,7 +327,7 @@ MEDIAN_AWK='
 generate_html() {
   [ -f "$CSV" ] || die "CSV not found: $CSV"
 
-  # Baseline wall clock (seconds) = default builder, C2 on, mvnflight off, at BASELINE_T threads.
+  # Baseline wall clock (seconds) = default builder, C2 on, mvn-lens off, at BASELINE_T threads.
   local base
   base=$(awk -F, -v bt="$BASELINE_T" "$MEDIAN_AWK"'
     NR==1 { next }
@@ -339,14 +339,14 @@ generate_html() {
   local maxn
   maxn=$(awk -F, 'NR>1 && ($1+0)>m { m=$1+0 } END { print m+0 }' "$CSV")
 
-  # Pick the solid/dashed dimension: mvnflight off/on (overhead) by default, or
-  # C2 on/off in legacy --no-mvnflight mode. The "other" dimension is pinned.
+  # Pick the solid/dashed dimension: mvn-lens off/on (overhead) by default, or
+  # C2 on/off in legacy --no-mvnlens mode. The "other" dimension is pinned.
   local sec solid dash has_dash lblDS lblSS lblDD lblSD cap_suffix
-  if [ "$HAS_MVNFLIGHT" = "1" ]; then
-    sec="mvnflight"; solid="off"; dash="on"; has_dash="$HAS_MVNFLIGHT"
-    lblDS="Default &middot; no mvnflight"; lblSS="Smart &middot; no mvnflight"
-    lblDD="Default &middot; mvnflight";    lblSD="Smart &middot; mvnflight"
-    cap_suffix="Solid = build without the mvnflight extension, dashed = with it; the dashed&ndash;solid gap is the profiler's overhead."
+  if [ "$HAS_MVNLENS" = "1" ]; then
+    sec="mvnlens"; solid="off"; dash="on"; has_dash="$HAS_MVNLENS"
+    lblDS="Default &middot; no mvn-lens"; lblSS="Smart &middot; no mvn-lens"
+    lblDD="Default &middot; mvn-lens";    lblSD="Smart &middot; mvn-lens"
+    cap_suffix="Solid = build without the mvn-lens extension, dashed = with it; the dashed&ndash;solid gap is the profiler's overhead."
   else
     sec="c2"; solid="on"; dash="off"; has_dash="$HAS_C2OFF"
     lblDS="Default &middot; C2 on"; lblSS="Smart &middot; C2 on"
@@ -355,13 +355,13 @@ generate_html() {
   fi
 
   # Chart feed: one "t d_solid s_solid d_dashed s_dashed" line per thread (median
-  # seconds), pinning the non-charted dimension (c2=on when secondary=mvnflight;
-  # mvnflight=off when secondary=c2).
+  # seconds), pinning the non-charted dimension (c2=on when secondary=mvn-lens;
+  # mvnlens=off when secondary=c2).
   local chart_svg
   chart_svg=$(awk -F, -v sec="$sec" -v solid="$solid" -v dash="$dash" "$MEDIAN_AWK"'
     NR==1 { next }
     { t=$1+0; b=$2; cc=$3; mf=$4; st=$6; w=$7
-      if (sec=="mvnflight") { if (cc!="on") next; dim=mf } else { if (mf!="off") next; dim=cc }
+      if (sec=="mvnlens") { if (cc!="on") next; dim=mf } else { if (mf!="off") next; dim=cc }
       if (st=="SUCCESS" && w!="") vals[t SUBSEP b SUBSEP dim] = vals[t SUBSEP b SUBSEP dim] " " w
       if (t>maxt) maxt=t }
     function med(t,b,d,  k){ k=t SUBSEP b SUBSEP d; return (k in vals) ? median(vals[k]) : "null" }
@@ -371,10 +371,10 @@ generate_html() {
     }
   ' "$CSV" | emit_chart_svg "$base" "$has_dash" "$maxn" "$lblDS" "$lblSS" "$lblDD" "$lblSD" "$cap_suffix")
 
-  # Median mvnflight overhead across thread counts (default builder, C2 on) — the
-  # headline number, shown in the intro when the mvnflight dimension is present.
+  # Median mvn-lens overhead across thread counts (default builder, C2 on) — the
+  # headline number, shown in the intro when the mvn-lens dimension is present.
   local overhead_note=""
-  if [ "$HAS_MVNFLIGHT" = "1" ]; then
+  if [ "$HAS_MVNLENS" = "1" ]; then
     overhead_note=$(awk -F, "$MEDIAN_AWK"'
       NR==1 { next }
       { t=$1+0; b=$2; cc=$3; mf=$4; st=$6; w=$7
@@ -398,11 +398,11 @@ generate_html() {
     ' "$CSV")
   fi
 
-  # Results table rows (median per threads x builder x c2 x mvnflight). When the
-  # mvnflight dimension is present, extra mvnflight / overhead / report columns
+  # Results table rows (median per threads x builder x c2 x mvn-lens). When the
+  # mvn-lens dimension is present, extra mvn-lens / overhead / report columns
   # are emitted; otherwise the legacy 6-column layout is kept.
   local table_rows
-  table_rows=$(awk -F, -v baseline="$base" -v hasmf="$HAS_MVNFLIGHT" "$MEDIAN_AWK"'
+  table_rows=$(awk -F, -v baseline="$base" -v hasmf="$HAS_MVNLENS" "$MEDIAN_AWK"'
     NR==1 { next }
     { t=$1+0; b=$2; cc=$3; mf=$4; st=$6; w=$7; rep=$10
       k=t SUBSEP b SUBSEP cc SUBSEP mf
@@ -441,11 +441,11 @@ generate_html() {
 
   # Table header matches the column set chosen above.
   local table_head
-  if [ "$HAS_MVNFLIGHT" = "1" ]; then
+  if [ "$HAS_MVNLENS" = "1" ]; then
     table_head='      <th class="num">Threads (-T)</th>
       <th>Builder</th>
       <th>C2 JIT</th>
-      <th>mvnflight</th>
+      <th>mvn-lens</th>
       <th class="num">Wall clock</th>
       <th class="num">% of baseline</th>
       <th class="num">Overhead</th>
@@ -460,14 +460,14 @@ generate_html() {
       <th>Status</th>'
   fi
 
-  # Optional intro paragraph that frames the mvnflight overhead measurement.
-  local mvnflight_intro=""
-  if [ "$HAS_MVNFLIGHT" = "1" ]; then
-    mvnflight_intro="  <p class=\"meta\">
-    <strong>mvnflight extension overhead.</strong> Every configuration is built twice &mdash; once without and once with the
-    <a href=\"https://central.sonatype.com/repository/maven-snapshots/io/github/mvnflight/mvnflight-extension/${MVNFLIGHT_VERSION}/\">mvnflight</a> JFR profiler (<code>io.github.mvnflight:mvnflight-extension:${MVNFLIGHT_VERSION}</code>).
-    Solid curves are the clean build; dashed curves add mvnflight, so the gap between them is the profiler's build overhead.${overhead_note:+ Median overhead: <strong>${overhead_note}</strong>.}
-    The <em>Report</em> column links each build's mvnflight dashboard.
+  # Optional intro paragraph that frames the mvn-lens overhead measurement.
+  local mvnlens_intro=""
+  if [ "$HAS_MVNLENS" = "1" ]; then
+    mvnlens_intro="  <p class=\"meta\">
+    <strong>mvn-lens extension overhead.</strong> Every configuration is built twice &mdash; once without and once with the
+    <a href=\"https://central.sonatype.com/repository/maven-snapshots/io/github/mvn-perf/mvn-lens-extension/${MVNLENS_VERSION}/\">mvn-lens</a> JFR profiler (<code>io.github.mvn-perf:mvn-lens-extension:${MVNLENS_VERSION}</code>).
+    Solid curves are the clean build; dashed curves add mvn-lens, so the gap between them is the profiler's build overhead.${overhead_note:+ Median overhead: <strong>${overhead_note}</strong>.}
+    The <em>Report</em> column links each build's mvn-lens dashboard.
   </p>"
   fi
 
@@ -528,7 +528,7 @@ generate_html() {
     flag; the right axis shows each point as a percentage of the
     <strong>${BASELINE}</strong> baseline.
   </p>
-${mvnflight_intro}
+${mvnlens_intro}
   ${chart_svg}
   <table>
     <thead><tr>
@@ -540,11 +540,11 @@ ${table_rows}
   </table>
   <p class="meta">
 EOF
-    if [ "$HAS_MVNFLIGHT" = "1" ]; then
-      printf '    Each config is built without the mvnflight extension (solid) and with it (dashed);\n'
+    if [ "$HAS_MVNLENS" = "1" ]; then
+      printf '    Each config is built without the mvn-lens extension (solid) and with it (dashed);\n'
       printf '    the dashed&ndash;solid gap is the profiler overhead. The <em>Overhead</em> column is the\n'
       printf '    extra wall-clock time the extension adds vs. the same config without it, and <em>Report</em>\n'
-      printf '    links the saved mvnflight dashboard for that build.<br>\n'
+      printf '    links the saved mvn-lens dashboard for that build.<br>\n'
     fi
     if [ "$HAS_C2OFF" = "1" ]; then
       printf '    Solid = C2 JIT enabled, dashed = C2 disabled (<code>-XX:TieredStopAtLevel=1</code>).\n'
@@ -603,9 +603,9 @@ EOF
 if [ "$FROM_CSV" = "1" ]; then
   [ -f "$CSV" ] || die "--from-csv: CSV not found: $CSV"
   # Detect the dimensions present so the chart/table match the data: any c2=off
-  # rows draw the C2 dashed curves; any mvnflight=on rows switch to the overhead view.
+  # rows draw the C2 dashed curves; any mvnlens=on rows switch to the overhead view.
   HAS_C2OFF=$(awk -F, 'NR>1 && $3=="off" { f=1 } END { print (f?1:0) }' "$CSV")
-  HAS_MVNFLIGHT=$(awk -F, 'NR>1 && $4=="on" { f=1 } END { print (f?1:0) }' "$CSV")
+  HAS_MVNLENS=$(awk -F, 'NR>1 && $4=="on" { f=1 } END { print (f?1:0) }' "$CSV")
   META_SOURCE="(from CSV)"
   META_REF=""
   META_GOALS=$(awk -F, 'NR==2 { print $5; exit }' "$CSV"); META_GOALS="${META_GOALS:-?}"
@@ -642,7 +642,7 @@ read -ra GOALS_ARR <<< "$GOALS"
 # --- cleanup trap state -----------------------------------------------------
 MODE=""            # clone | local
 EXT=""             # path to the (possibly injected) .mvn/extensions.xml
-EXT_BASE=""        # temp copy of the takari "base" extensions.xml (mvnflight off)
+EXT_BASE=""        # temp copy of the takari "base" extensions.xml (mvn-lens off)
 MVN_DIR=""         # path to <root>/.mvn
 SNAPSHOT=""        # backup of a pre-existing extensions.xml (local mode)
 HAD_EXT=0          # 1 if the repo already had an extensions.xml
@@ -747,7 +747,7 @@ else
   META_SINGLE_MODULE=0
 fi
 HAS_C2OFF="$C2_OFF"
-HAS_MVNFLIGHT="$MVNFLIGHT"
+HAS_MVNLENS="$MVNLENS"
 
 # --- 7.3 enable the Takari smart builder ------------------------------------
 MVN_DIR="$ROOT/.mvn"
@@ -793,16 +793,16 @@ else
 EOF
 fi
 
-# --- mvnflight on/off toggling ----------------------------------------------
-# Drop any <extension> block naming mvnflight-extension from stdin file $1 (so a
-# project that already registers mvnflight does not contaminate the "off" baseline
+# --- mvn-lens on/off toggling ----------------------------------------------
+# Drop any <extension> block naming mvn-lens-extension from stdin file $1 (so a
+# project that already registers mvn-lens does not contaminate the "off" baseline
 # or get a duplicate entry on "on"). Other extensions (takari, etc.) pass through.
-strip_mvnflight() {
+strip_mvnlens() {
   awk '
     /<extension>/ { inblk=1; buf=$0; hasmf=0; next }
     inblk {
       buf=buf ORS $0
-      if ($0 ~ /mvnflight-extension/) hasmf=1
+      if ($0 ~ /mvn-lens-extension/) hasmf=1
       if ($0 ~ /<\/extension>/) { if (!hasmf) print buf; inblk=0; buf=""; hasmf=0 }
       next
     }
@@ -810,24 +810,24 @@ strip_mvnflight() {
   ' "$1"
 }
 
-# Snapshot the takari-enabled, mvnflight-free extensions.xml as the "base"
-# (mvnflight off) state. Each build rewrites extensions.xml from this base, adding
-# the mvnflight extension only for the "on" rows — so the "off" rows are a clean
+# Snapshot the takari-enabled, mvn-lens-free extensions.xml as the "base"
+# (mvn-lens off) state. Each build rewrites extensions.xml from this base, adding
+# the mvn-lens extension only for the "on" rows — so the "off" rows are a clean
 # baseline with the extension not even loaded (a true measure of its overhead).
 EXT_BASE="$(mktemp)"
-strip_mvnflight "$EXT" > "$EXT_BASE"
-[ "$MVNFLIGHT" = "1" ] && info "mvnflight overhead dimension ON — registering io.github.mvnflight:mvnflight-extension:$MVNFLIGHT_VERSION for the 'on' rows (must be in ~/.m2, or reachable via --settings)"
+strip_mvnlens "$EXT" > "$EXT_BASE"
+[ "$MVNLENS" = "1" ] && info "mvn-lens overhead dimension ON — registering io.github.mvn-perf:mvn-lens-extension:$MVNLENS_VERSION for the 'on' rows (must be in ~/.m2, or reachable via --settings)"
 
 # Write <root>/.mvn/extensions.xml for a build: always the takari base, plus the
-# mvnflight extension when $1 is "on".
+# mvn-lens extension when $1 is "on".
 apply_extensions() {
   local want="$1"   # on | off
   if [ "$want" = "on" ]; then
-    awk -v ver="$MVNFLIGHT_VERSION" '
+    awk -v ver="$MVNLENS_VERSION" '
       /<\/extensions>/ && !ins {
         print "    <extension>"
-        print "        <groupId>io.github.mvnflight</groupId>"
-        print "        <artifactId>mvnflight-extension</artifactId>"
+        print "        <groupId>io.github.mvn-perf</groupId>"
+        print "        <artifactId>mvn-lens-extension</artifactId>"
         print "        <version>" ver "</version>"
         print "    </extension>"
         ins=1
@@ -839,7 +839,7 @@ apply_extensions() {
   fi
 }
 
-# Keep mvnflight out of the reactor-summary and warm-up builds.
+# Keep mvn-lens out of the reactor-summary and warm-up builds.
 apply_extensions off
 
 # --- per-run logs -----------------------------------------------------------
@@ -875,10 +875,10 @@ fi
 # --- 7.4 warm-up build (not recorded) ---------------------------------------
 TOTAL=$(( (N + 1) * 2 ))
 [ "$C2_OFF" = "1" ] && TOTAL=$(( TOTAL * 2 ))
-[ "$MVNFLIGHT" = "1" ] && TOTAL=$(( TOTAL * 2 ))
+[ "$MVNLENS" = "1" ] && TOTAL=$(( TOTAL * 2 ))
 TOTAL=$(( TOTAL * RUNS ))
 info ""
-info "About to run a warm-up build, then ${TOTAL} timed builds (t=0..${N}, 2 builders$([ "$C2_OFF" = "1" ] && echo ", C2 on+off")$([ "$MVNFLIGHT" = "1" ] && echo ", mvnflight off+on")$([ "$RUNS" -gt 1 ] && echo ", ${RUNS} runs each")). This can take a while."
+info "About to run a warm-up build, then ${TOTAL} timed builds (t=0..${N}, 2 builders$([ "$C2_OFF" = "1" ] && echo ", C2 on+off")$([ "$MVNLENS" = "1" ] && echo ", mvn-lens off+on")$([ "$RUNS" -gt 1 ] && echo ", ${RUNS} runs each")). This can take a while."
 info ""
 info "Warm-up build (mvn ${GOALS_ARR[*]}) — not recorded ..."
 WARMUP_LOG="$LOGDIR/warmup.log"
@@ -893,19 +893,19 @@ else
 fi
 
 # --- CSV header (D7 §8) -----------------------------------------------------
-printf 'threads,builder,c2,mvnflight,goals,status,wall_clock_s,total_time_raw,log_file,report_file,timestamp\n' > "$CSV"
+printf 'threads,builder,c2,mvnlens,goals,status,wall_clock_s,total_time_raw,log_file,report_file,timestamp\n' > "$CSV"
 
-# Where saved mvnflight dashboards go (one per successful mvnflight=on build).
-[ "$MVNFLIGHT" = "1" ] && mkdir -p "$REPORTDIR"
+# Where saved mvn-lens dashboards go (one per successful mvnlens=on build).
+[ "$MVNLENS" = "1" ] && mkdir -p "$REPORTDIR"
 
-# Run a single (t, builder, c2, mvnflight) build, parse it, and append a CSV row.
+# Run a single (t, builder, c2, mvn-lens) build, parse it, and append a CSV row.
 INDEX=0
 run_one() {
-  local t="$1" builder="$2" c2="$3" mvnflight="$4" run="$5"
+  local t="$1" builder="$2" c2="$3" mvnlens="$4" run="$5"
   INDEX=$(( INDEX + 1 ))
 
-  # Add/drop the mvnflight extension in .mvn/extensions.xml for this build.
-  apply_extensions "$mvnflight"
+  # Add/drop the mvn-lens extension in .mvn/extensions.xml for this build.
+  apply_extensions "$mvnlens"
 
   local -a args
   args=( "${GOALS_ARR[@]}" )
@@ -917,13 +917,13 @@ run_one() {
     export MAVEN_OPTS="${old_opts:+$old_opts }-XX:TieredStopAtLevel=1"
   fi
 
-  local tag="${builder}-T${t}-c2${c2}-mf${mvnflight}"
+  local tag="${builder}-T${t}-c2${c2}-mf${mvnlens}"
   [ "$RUNS" -gt 1 ] && tag="${tag}-r${run}"
   local log="$LOGDIR/${tag}.log"
   local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   printf '[%2d/%2d] %-7s -T%-2s C2 %-3s mf %-3s%s ... ' \
-    "$INDEX" "$TOTAL" "$builder" "$t" "$c2" "$mvnflight" "$([ "$RUNS" -gt 1 ] && printf ' run %d' "$run")" >&2
+    "$INDEX" "$TOTAL" "$builder" "$t" "$c2" "$mvnlens" "$([ "$RUNS" -gt 1 ] && printf ' run %d' "$run")" >&2
 
   local status_rc=0
   run_mvn "${args[@]}" > "$log" 2>&1 || status_rc=$?
@@ -949,38 +949,38 @@ run_one() {
     # Smart-builder load-failure hint (Maven 4 / version mismatch): only when the
     # SAME-config default run succeeded, so we don't blame Takari for a project
     # that simply doesn't build (§10).
-    local def_ok; eval "def_ok=\${DEF_OK_${c2}_${mvnflight}:-0}"   # bash-3.2-safe indirect read
+    local def_ok; eval "def_ok=\${DEF_OK_${c2}_${mvnlens}:-0}"   # bash-3.2-safe indirect read
     if [ "$builder" = "smart" ] && [ "$def_ok" = "1" ]; then
       warn "-b smart failed but the same default build succeeded — Takari $TAKARI_VERSION may not support this project's Maven version; try --takari-version"
     fi
   fi
 
-  # Save the mvnflight dashboard (clean wipes target/, so copy it out per build).
-  if [ "$mvnflight" = "on" ] && [ "$status" = "SUCCESS" ] && [ -f "$ROOT/target/mvnflight/report.html" ]; then
-    if cp "$ROOT/target/mvnflight/report.html" "$REPORTDIR/${tag}.html" 2>/dev/null; then
+  # Save the mvn-lens dashboard (clean wipes target/, so copy it out per build).
+  if [ "$mvnlens" = "on" ] && [ "$status" = "SUCCESS" ] && [ -f "$ROOT/target/mvnlens/report.html" ]; then
+    if cp "$ROOT/target/mvnlens/report.html" "$REPORTDIR/${tag}.html" 2>/dev/null; then
       report_rel="$REPORT_REL_DIR/${tag}.html"
     fi
   fi
-  if [ "$mvnflight" = "on" ] && [ "$status" = "SUCCESS" ] && [ -z "$report_rel" ]; then
-    warn "mvnflight build succeeded but no report at $ROOT/target/mvnflight/report.html — could the extension be resolved (see --settings)?"
+  if [ "$mvnlens" = "on" ] && [ "$status" = "SUCCESS" ] && [ -z "$report_rel" ]; then
+    warn "mvn-lens build succeeded but no report at $ROOT/target/mvnlens/report.html — could the extension be resolved (see --settings)?"
   fi
 
-  # Track default-builder success per (C2, mvnflight) so the smart-failure hint
+  # Track default-builder success per (C2, mvn-lens) so the smart-failure hint
   # above can tell a smart-specific failure apart from a generally broken build.
   if [ "$builder" = "default" ]; then
-    if [ "$status" = "SUCCESS" ]; then eval "DEF_OK_${c2}_${mvnflight}=1"; else eval "DEF_OK_${c2}_${mvnflight}=0"; fi
+    if [ "$status" = "SUCCESS" ]; then eval "DEF_OK_${c2}_${mvnlens}=1"; else eval "DEF_OK_${c2}_${mvnlens}=0"; fi
   fi
 
   printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
-    "$t" "$builder" "$c2" "$mvnflight" "$GOALS" "$status" "$wall_s" "$raw" "$log" "$report_rel" "$ts" >> "$CSV"
+    "$t" "$builder" "$c2" "$mvnlens" "$GOALS" "$status" "$wall_s" "$raw" "$log" "$report_rel" "$ts" >> "$CSV"
 }
 
 # --- 7.5 the matrix loop ----------------------------------------------------
 C2_LEVELS="on"
 [ "$C2_OFF" = "1" ] && C2_LEVELS="on off"
-MVNFLIGHT_LEVELS="off"
-[ "$MVNFLIGHT" = "1" ] && MVNFLIGHT_LEVELS="off on"
-# DEF_OK_<c2>_<mvnflight> are read indirectly in run_one via eval, which ShellCheck
+MVNLENS_LEVELS="off"
+[ "$MVNLENS" = "1" ] && MVNLENS_LEVELS="off on"
+# DEF_OK_<c2>_<mvn-lens> are read indirectly in run_one via eval, which ShellCheck
 # cannot see — so it wrongly reports them unused.
 # shellcheck disable=SC2034   # one simple command so the directive covers all four
 DEF_OK_on_off=0 DEF_OK_on_on=0 DEF_OK_off_off=0 DEF_OK_off_on=0   # per-(t,c2,mf) default-build success
@@ -988,9 +988,9 @@ DEF_OK_on_off=0 DEF_OK_on_on=0 DEF_OK_off_off=0 DEF_OK_off_on=0   # per-(t,c2,mf
 for t in $(seq 0 "$N"); do
   for builder in default smart; do
     for c2 in $C2_LEVELS; do
-      for mvnflight in $MVNFLIGHT_LEVELS; do
+      for mvnlens in $MVNLENS_LEVELS; do
         for run in $(seq 1 "$RUNS"); do
-          run_one "$t" "$builder" "$c2" "$mvnflight" "$run"
+          run_one "$t" "$builder" "$c2" "$mvnlens" "$run"
         done
       done
     done
@@ -1008,8 +1008,8 @@ if [ "$MODE" = "clone" ] && [ "$KEEP" = "1" ]; then
 elif [ "$MODE" = "local" ]; then
   info "Per-run logs under: $LOGDIR"
 fi
-if [ "$MVNFLIGHT" = "1" ] && [ -d "$REPORTDIR" ]; then
-  info "mvnflight dashboards under: $REPORTDIR (linked from the HTML)"
+if [ "$MVNLENS" = "1" ] && [ -d "$REPORTDIR" ]; then
+  info "mvn-lens dashboards under: $REPORTDIR (linked from the HTML)"
 fi
 
 info "Done."

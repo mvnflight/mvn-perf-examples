@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Committed settings file whose ONLY job is to make the Maven Central snapshot
-  repository visible, so that `io.github.mvnflight:mvnflight-extension:0.1.0-SNAPSHOT`
+  repository visible, so that `io.github.mvn-perf:mvn-lens-extension:0.1.0-SNAPSHOT`
   (declared in .mvn/extensions.xml) can be downloaded.
 
   Why a settings file and not <repositories> in pom.xml: core extensions are

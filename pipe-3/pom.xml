@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>io.github.mvnflight.examples</groupId>
+        <groupId>io.github.mvn-perf.examples</groupId>
         <artifactId>mvn-perf-examples</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
@@ -16,7 +16,7 @@
 
     <dependencies>
         <dependency>
-            <groupId>io.github.mvnflight.examples</groupId>
+            <groupId>io.github.mvn-perf.examples</groupId>
             <artifactId>pipe-2</artifactId>
             <version>1.0.0-SNAPSHOT</version>
         </dependency>

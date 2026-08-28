@@ -15,8 +15,8 @@
 #   report-mvnd[-noC2].html                       the Maven Daemon leg
 # The -f<fork> suffix appears only on the fork-comparison page (FORK_LEVELS set).
 #
-# Each report-*.html is a self-contained mvnflight dashboard that embeds its
-# model as JSON in <script id="mvnflight-data" type="application/json">. We pull
+# Each report-*.html is a self-contained mvn-lens dashboard that embeds its
+# model as JSON in <script id="mvnlens-data" type="application/json">. We pull
 # that JSON out (perl) and read the headline metrics (node) so the index can show,
 # per report: wall-clock, CPU, cumulative JIT C2 compilation, cumulative Maven
 # dependency download time, and cumulative GC time.
@@ -71,11 +71,11 @@ if ! ls report-*.html >/dev/null 2>&1; then
   exit 1
 fi
 
-# Extract the embedded mvnflight model JSON from a report HTML file.
+# Extract the embedded mvn-lens model JSON from a report HTML file.
 # The data script tag is a single line; the renderer neutralises any inner
 # "</script" to "<\/script", so the first literal "</script>" is the real close.
 extract_json() {
-  perl -0777 -ne 'print $1 if /<script id="mvnflight-data" type="application\/json">(.*?)<\/script>/s' "$1"
+  perl -0777 -ne 'print $1 if /<script id="mvnlens-data" type="application\/json">(.*?)<\/script>/s' "$1"
 }
 
 # Format a millisecond count the same way the dashboard's fmtMs() does, so the
@@ -845,7 +845,7 @@ if [ -z "${PAGE_INTRO:-}" ]; then
     compilation column drop to nearly nothing.<br>
     The <strong>first row</strong> is the single-threaded default build run with
     <strong>no local dependency cache</strong> (an empty local repository, seeded
-    with only the mvnflight extension): every plugin and project dependency is
+    with only the mvn-lens extension): every plugin and project dependency is
     downloaded during the build — compare its Maven downloads column with the
     warm-cache rows below, which all reuse the local repository.'
 fi
@@ -943,7 +943,7 @@ EOF
   cat <<'EOF'
     </tbody>
   </table>
-  <p><a href="https://github.com/mvnflight/mvn-perf-examples">mvn-perf-examples source on GitHub</a></p>
+  <p><a href="https://github.com/mvn-perf/mvn-perf-examples">mvn-perf-examples source on GitHub</a></p>
   <div id="chart-tip"></div>
   <script>
   // Instant, styled hover tooltip for the chart's data points: each .hit circle

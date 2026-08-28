@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Generate the mvnflight reports locally, mirroring the `report` matrix of
+  Generate the mvn-lens reports locally, mirroring the `report` matrix of
   .github/workflows/scaling-grid.yml — without GitHub Actions.
 
 .DESCRIPTION
   For each scenario it runs a profiled `clean verify` of this reactor and copies
-  the rendered target/mvnflight/report.html into the output dir under the same
+  the rendered target/mvnlens/report.html into the output dir under the same
   name the CI uses (report-<builder>-T<n>[-noCache][-noC2].html), so the files are
   byte-for-byte the same kind the CI publishes to GitHub Pages under scaling/.
 
@@ -18,17 +18,17 @@
     + builders default + smart  x  -T1..-T10  x  C2 on/off  = 41 builds.
 
   The no-cache leg runs FIRST: it points Maven at a scratch local repository
-  seeded with ONLY the mvnflight-* artifacts (never this reactor's own
-  io.github.mvnflight.examples jars), so every plugin and project
+  seeded with ONLY the mvn-lens-* artifacts (never this reactor's own
+  io.github.mvn-perf.examples jars), so every plugin and project
   dependency is downloaded during the profiled build and shows up in the
   report's "Maven downloads" metric. All other legs use the normal warm ~/.m2
   local cache.
 
   C2-off legs disable the C2 JIT tier (keep only C1) on BOTH JVMs, exactly like
   the workflow: the build JVM via MAVEN_OPTS, the forked test JVMs via
-  -Dtest.argLine (which the root pom prepends ahead of mvnflight's -javaagent).
+  -Dtest.argLine (which the root pom prepends ahead of mvn-lens's -javaagent).
 
-  The mvnflight extension itself is resolved from Maven Central snapshots via
+  The mvn-lens extension itself is resolved from Maven Central snapshots via
   the committed .mvn/settings.xml (which .mvn/maven.config wires into runs from
   the repo root; every build below passes it explicitly with an absolute -s, so
   the script works from any directory), so there is nothing to install first.
@@ -76,14 +76,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot  = $PSScriptRoot                            # the script sits at the repo root
 $demoPom   = Join-Path $repoRoot 'pom.xml'
-$reportSrc = Join-Path $repoRoot 'target\mvnflight\report.html'
+$reportSrc = Join-Path $repoRoot 'target\mvnlens\report.html'
 $settings  = Join-Path $repoRoot '.mvn\settings.xml'
 if (-not $OutDir) { $OutDir = Join-Path $repoRoot 'published\reference' }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 # Build the leg list (mvnd excluded by design). The no-cache leg comes FIRST:
 # a single-threaded default build against an empty scratch local repo (seeded
-# with only the mvnflight artifacts below), so the report shows the full
+# with only the mvn-lens artifacts below), so the report shows the full
 # dependency-download cost; every other leg uses the warm ~/.m2 cache.
 $legs = @()
 if (-not $SkipNoCache) {
@@ -125,32 +125,32 @@ foreach ($leg in $legs) {
   $mvnArgs += @('-f', $demoPom, '-s', $settings)
 
   if ($leg.Cache -eq 'cold') {
-    # Scratch local repo seeded with ONLY the mvnflight artifacts, copied out of
-    # the warm ~/.m2. mvnflight resolves fine from Central snapshots, so this is
+    # Scratch local repo seeded with ONLY the mvn-lens artifacts, copied out of
+    # the warm ~/.m2. mvn-lens resolves fine from Central snapshots, so this is
     # no longer strictly required to make the build start — it is kept so this
     # leg measures the same thing it always has: the download cost of the
     # PROJECT's own dependencies and plugins, with the profiler already present.
     # Seeding it keeps these reports comparable with the published ones.
-    # Only the mvnflight-* artifacts are seeded, never the whole io\github\mvnflight
+    # Only the mvn-lens-* artifacts are seeded, never the whole io\github\mvn-perf
     # directory: it also holds `examples`, THIS reactor's own groupId
-    # (io.github.mvnflight.examples), which is there as soon as anyone has run
+    # (io.github.mvn-perf.examples), which is there as soon as anyone has run
     # `mvn install` here once. Seeding that would pre-populate the reactor's own
     # jars, the leg would under-report the download cost, and it would stop being
     # comparable with the CI no-cache leg it mirrors (scaling-grid.yml copies
-    # mvnflight-* for the same reason).
-    $mvnflightArtifacts = Join-Path $HOME '.m2\repository\io\github\mvnflight'
-    $coldRepo = Join-Path $env:TEMP 'mvnflight-cold-repo'
+    # mvn-lens-* for the same reason).
+    $mvnLensArtifacts = Join-Path $HOME '.m2\repository\io\github\mvn-perf'
+    $coldRepo = Join-Path $env:TEMP 'mvnlens-cold-repo'
     if (Test-Path $coldRepo) { Remove-Item $coldRepo -Recurse -Force }
-    $coldMvnflight = Join-Path $coldRepo 'io\github\mvnflight'
-    New-Item -ItemType Directory -Force -Path $coldMvnflight | Out-Null
-    $seeded = @(Get-ChildItem -Path $mvnflightArtifacts -Directory -Filter 'mvnflight-*' -ErrorAction SilentlyContinue)
+    $coldMvnLens = Join-Path $coldRepo 'io\github\mvn-perf'
+    New-Item -ItemType Directory -Force -Path $coldMvnLens | Out-Null
+    $seeded = @(Get-ChildItem -Path $mvnLensArtifacts -Directory -Filter 'mvn-lens-*' -ErrorAction SilentlyContinue)
     if ($seeded.Count) {
-      Copy-Item -Path $seeded.FullName -Destination $coldMvnflight -Recurse
+      Copy-Item -Path $seeded.FullName -Destination $coldMvnLens -Recurse
     } else {
       # First ever run on this machine: nothing to seed. The extension is then
       # downloaded during the timed build too, so this one report over-reports
       # the download cost slightly. Run any warm leg once and re-run to fix it.
-      Write-Warning "    no mvnflight-* artifacts in $mvnflightArtifacts - the cold leg will download the extension too."
+      Write-Warning "    no mvn-lens-* artifacts in $mvnLensArtifacts - the cold leg will download the extension too."
     }
     $mvnArgs += "-Dmaven.repo.local=$coldRepo"
   }

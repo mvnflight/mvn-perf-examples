@@ -4,7 +4,7 @@ import java.util.Random;
 
 /**
  * Test pause helper for this example reactor. Every test method's body is just a
- * call to {@link #sleep()}; the duration is what mvnflight measures, so the
+ * call to {@link #sleep()}; the duration is what mvn-lens measures, so the
  * reactor's per-module weight comes entirely from here.
  *
  * <p>Durations are <b>fixed per module</b>: each module's pom sets

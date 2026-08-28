@@ -7,10 +7,10 @@
          the built-in `central` repository has snapshots disabled. .mvn/maven.config
          points Maven at that settings file, so a plain `./mvnw clean verify` works
          with no extra flags. The version deliberately floats on 0.1.0-SNAPSHOT:
-         every push to mvnflight's main publishes a new snapshot build. -->
+         every push to mvn-lens's main publishes a new snapshot build. -->
     <extension>
-        <groupId>io.github.mvnflight</groupId>
-        <artifactId>mvnflight-extension</artifactId>
+        <groupId>io.github.mvn-perf</groupId>
+        <artifactId>mvn-lens-extension</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </extension>
 
